@@ -1,0 +1,1 @@
+# Adiciona aqui as dependências (ex.: selenium, gspread, oauth2client, python-dotenv)

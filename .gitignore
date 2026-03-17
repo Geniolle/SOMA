@@ -1,0 +1,21 @@
+﻿# segredos
+.env
+credenciais.json
+credencial OAuth 2.0.json
+deploy/secrets/
+secrets/
+
+# build
+dist/
+build/
+*.spec
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# logs e artefactos
+logs/
+artifacts/

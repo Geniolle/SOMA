@@ -1,0 +1,245 @@
+﻿# src/soma_app/workflows/run_soma.py
+from __future__ import annotations
+
+import importlib
+import logging
+import os
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Dict, Optional
+
+from soma_app.infra.trace import step, new_run_id, log_kv
+from soma_app.infra.log_config import configure_logging, ensure_artifacts_dirs
+from soma_app.infra.sheets_client import SheetsClient
+from soma_app.infra.webdriver_factory import WebDriverFactory
+
+from soma_app.workflows.process_contaordem import (
+    preprocess_contaordem,
+    SheetsTable,
+    DOC_COL_DEFAULT,
+    STATUS_COL_DEFAULT,
+    LOCK_VALUE_DEFAULT,
+)
+
+from soma_app.automation.pages.login_page import LoginPage
+from soma_app.automation.pages.entradas_saidas_page import EntradasSaidasPage
+
+logger = logging.getLogger(__name__)
+
+
+# carrega .env automaticamente
+try:
+    from dotenv import load_dotenv  # type: ignore
+    load_dotenv()
+except Exception:
+    pass
+
+
+def _bool_env(name: str, default: bool = False) -> bool:
+    v = (os.getenv(name) or "").strip().lower()
+    if v in {"1", "true", "yes", "y", "on"}:
+        return True
+    if v in {"0", "false", "no", "n", "off"}:
+        return False
+    return default
+
+
+def _load_settings() -> Any:
+    """
+    Carrega uma instância de Settings (nunca devolve módulo).
+    """
+    import types
+
+    candidates = [
+        # ESTE é o teu settings real:
+        "soma_app.config.settings",
+        # mantemos compatibilidade com variações antigas:
+        "soma_app.infra.settings",
+        "soma_app.infra.config",
+        "soma_app.settings",
+        "soma_app.config",
+    ]
+
+    for modname in candidates:
+        try:
+            mod = importlib.import_module(modname)
+        except Exception:
+            continue
+
+        # tenta funções factory
+        for fn_name in ("get_settings", "load_settings", "settings_from_env"):
+            fn = getattr(mod, fn_name, None)
+            if callable(fn):
+                try:
+                    s = fn()
+                    if s is not None and not isinstance(s, types.ModuleType):
+                        return s
+                except Exception:
+                    pass
+
+        # evita devolver "settings" quando é um módulo
+        s0 = getattr(mod, "settings", None)
+        if s0 is not None and not isinstance(s0, types.ModuleType):
+            return s0
+
+        # tenta classe Settings
+        cls = getattr(mod, "Settings", None)
+        if cls is not None:
+            for ctor in ("from_env", "load"):
+                cfn = getattr(cls, ctor, None)
+                if callable(cfn):
+                    try:
+                        s = cfn()
+                        if s is not None:
+                            return s
+                    except Exception:
+                        pass
+            try:
+                return cls()
+            except Exception:
+                pass
+
+    # fallback direto (último recurso)
+    from soma_app.config.settings import load_settings  # type: ignore
+    return load_settings()
+
+def _sheet_name(settings: Any) -> str:
+    # PreferÃªncia: env SHEET_CONTAORDEM (teu .env)
+    env_ws = (os.getenv("SHEET_CONTAORDEM") or "").strip()
+    if env_ws:
+        return env_ws
+
+    for n in ("sheet", "sheet_name", "SHEET", "SHEET_NAME"):
+        if hasattr(settings, n):
+            v = getattr(settings, n)
+            if v:
+                return str(v).strip()
+
+    return (os.getenv("SHEET_NAME") or os.getenv("SHEET") or "TESTE_CONTAORDEM").strip()
+
+
+def _now_pt() -> str:
+    return datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+
+
+def _safe_err(e: Exception) -> str:
+    s = str(e).strip().replace("\n", " ")
+    return s[:180] if s else type(e).__name__
+
+
+def _mark_row_ok(t: SheetsTable, row_idx: int, doc_id: str, iduser: str) -> None:
+    updates = [
+        (row_idx, DOC_COL_DEFAULT, doc_id),
+        (row_idx, "IDUSER", iduser),
+        (row_idx, "TIMESTAMP", _now_pt()),
+    ]
+    if t.has_col(STATUS_COL_DEFAULT):
+        updates.append((row_idx, STATUS_COL_DEFAULT, "VALIDADO"))
+    t.batch_update_cells(updates)
+
+
+def _mark_row_error(t: SheetsTable, row_idx: int, err_msg: str, allow_retry: bool) -> None:
+    updates = [(row_idx, DOC_COL_DEFAULT, "")]
+    if t.has_col(STATUS_COL_DEFAULT):
+        updates.append((row_idx, STATUS_COL_DEFAULT, "VALIDADO" if allow_retry else "ERRO"))
+
+    for col in ("ULTIMO_ERRO", "ÃšLTIMO_ERRO", "ERRO", "ERROR_MSG"):
+        if t.has_col(col):
+            updates.append((row_idx, col, err_msg))
+            break
+
+    if t.has_col("TIMESTAMP"):
+        updates.append((row_idx, "TIMESTAMP", _now_pt()))
+
+    t.batch_update_cells(updates)
+
+
+def _unlock_still_processing(t: SheetsTable, run_rows: Dict[int, Dict[str, Any]]) -> None:
+    updates = []
+    for row_idx, r in run_rows.items():
+        doc = str(r.get(DOC_COL_DEFAULT, "")).strip()
+        if doc.lower() == LOCK_VALUE_DEFAULT.lower():
+            updates.append((row_idx, DOC_COL_DEFAULT, ""))
+            if t.has_col(STATUS_COL_DEFAULT):
+                updates.append((row_idx, STATUS_COL_DEFAULT, "VALIDADO"))
+    if updates:
+        t.batch_update_cells(updates)
+
+
+def main() -> int:
+    settings = _load_settings()
+
+    configure_logging(settings)
+    ensure_artifacts_dirs(settings)
+
+    ws = _sheet_name(settings)
+    run_id = new_run_id()
+    headless = _bool_env("HEADLESS", True)
+    allow_retry = _bool_env("ALLOW_RETRY_ERROR", False)
+    iduser = (os.getenv("IDUSER") or "USERJOB").strip() or "USERJOB"
+
+    with step(logger, "run.init", run_id=run_id, sheet=ws, headless=headless):
+        sheets = SheetsClient(settings)
+        bundle = WebDriverFactory.create(settings)
+
+    with step(logger, "run.login", run_id=run_id):
+        login = LoginPage(bundle.a, settings)
+        if hasattr(login, "run"):
+            login.run()
+        elif hasattr(login, "login"):
+            login.login()
+
+    entradas = EntradasSaidasPage(bundle.driver, bundle.a)
+
+    batch = 1
+    while True:
+        with step(logger, "run.preprocess", run_id=run_id, batch=batch):
+            sheets = SheetsClient(settings)
+            result = preprocess_contaordem(sheets, ws=ws, run_id=run_id, batch=batch)
+
+        if not result.workset:
+            log_kv(logger, "RUN finalizado: nada para processar.", run_id=run_id, batch=batch, inflight=result.inflight, capacity_new=result.capacity_new)
+            break
+
+        log_kv(logger, "Workset carregado.", run_id=run_id, batch=batch, rows=len(result.workset), inflight=result.inflight, newly_locked=result.newly_locked)
+
+        table = SheetsTable(sheets, ws)
+        table.load()
+
+        run_rows: Dict[int, Dict[str, Any]] = {int(r["row"]): r for r in result.workset}
+
+        try:
+            for r in result.workset:
+                row_idx = int(r["row"])
+                tipo = str(r.get("TIPO") or r.get("tipo") or "").strip() or "-"
+
+                with step(logger, "run.process_row", run_id=run_id, batch=batch, row=row_idx, tipo=tipo):
+                    try:
+                        with step(logger, "row.entrada_saida", row=row_idx, tipo=tipo):
+                            doc_id = entradas.create_and_get_doc_id(r)
+                        _mark_row_ok(table, row_idx=row_idx, doc_id=str(doc_id), iduser=iduser)
+                        log_kv(logger, "Row OK.", run_id=run_id, batch=batch, row=row_idx, tipo=tipo)
+                    except Exception as e:
+                        err_msg = _safe_err(e)
+                        _mark_row_error(table, row_idx=row_idx, err_msg=err_msg, allow_retry=allow_retry)
+                        logger.exception("Row ERRO | run_id=%s | batch=%s | row=%s | tipo=%s", run_id, batch, row_idx, tipo)
+
+        finally:
+            if allow_retry:
+                table.load()
+                current_rows = {int(x["row"]): x for x in table.get_records_with_row()}
+                run_rows_live = {idx: current_rows.get(idx, {}) for idx in run_rows.keys()}
+                _unlock_still_processing(table, run_rows_live)
+
+        batch += 1
+
+    try:
+        bundle.quit()
+    except Exception:
+        pass
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
