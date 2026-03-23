@@ -61,7 +61,12 @@ def _build_options(headless: bool, downloads_dir: str) -> Options:
     # Headless/viewport
     if headless:
         opt.add_argument("--headless=new")
+    
+    # === BLINDAGEM CONTRA VERSÃO MOBILE / HEADLESS ===
     opt.add_argument("--window-size=1920,1080")
+    opt.add_argument("--force-device-scale-factor=1")
+    opt.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+    
     opt.add_argument("--disable-gpu")
     opt.add_argument("--no-sandbox")
     opt.add_argument("--disable-dev-shm-usage")
@@ -163,6 +168,9 @@ def create_driver(
     service = _build_service()
 
     driver = webdriver.Chrome(service=service, options=options)
+    
+    # === FORÇAR MAXIMIZAÇÃO (Dupla Segurança) ===
+    driver.maximize_window()
 
     # headless downloads via CDP (best effort)
     try:

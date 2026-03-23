@@ -448,6 +448,16 @@ def main() -> int:
             driver_obj = getattr(bundle, "a", None)
             wd = _unwrap_webdriver(driver_obj)
 
+            # =================================================================================
+            # === A CURA PARA A CEGUEIRA NO SERVIDOR LINUX (FORÇAR RESOLUÇÃO FULL HD) ===
+            # =================================================================================
+            if wd:
+                try:
+                    wd.set_window_size(1920, 1080)
+                except Exception as e:
+                    logger.debug("Falha ao forçar window_size: %s", e)
+            # =================================================================================
+
             info = _get_chromedriver_info(wd)
             chrome_ver = _get_chrome_version(wd)
 

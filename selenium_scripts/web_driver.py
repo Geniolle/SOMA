@@ -6,31 +6,24 @@ from config.config import HEADLESS
 
 def iniciar_webdriver():
     chrome_options = Options()
-
+    
     if HEADLESS:
-        print("🤖 MODO: INVISÍVEL (Headless=True)")
-        chrome_options.add_argument("--headless=new")
-        chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-    else:
-        print("👁️ MODO: VISÍVEL (Headless=False)")
-        # Quando False, a janela do Chrome abrirá fisicamente
+        chrome_options.add_argument("--headless=new") # O novo modo headless (mais estável)
+    
+    # === A CURA PARA A CEGUEIRA NO SERVIDOR LINUX ===
+    chrome_options.add_argument("--window-size=1920,1080") # Forçar monitor Full HD
+    chrome_options.add_argument("--force-device-scale-factor=1")
+    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+    
+    # Otimizações para Linux
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
 
-    chrome_options.add_argument("--window-size=1920,1080")
-    chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
-
-    try:
-        driver = webdriver.Chrome(
-            service=Service(ChromeDriverManager().install()),
-            options=chrome_options
-        )
-        print("✅ WebDriver inicializado com sucesso!")
-        return driver
-    except Exception as e:
-        print(f"❌ Erro ao iniciar o WebDriver: {e}")
-        raise
-
-def salvar_screenshot(driver, nome_arquivo="erro.png"):
-    """Função mantida apenas para compatibilidade de importação."""
-    pass
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=chrome_options)
+    
+    # Maximizar a janela só para garantir
+    driver.maximize_window()
+    
+    return driver
