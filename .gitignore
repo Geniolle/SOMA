@@ -1,21 +1,46 @@
-﻿# segredos
+﻿# =========================================================================
+# SEGURANÇA MÁXIMA (Chaves e Credenciais)
+# =========================================================================
+*.env
 .env
 credenciais.json
-credencial OAuth 2.0.json
-deploy/secrets/
-secrets/
+chave.key
 
-# build
-dist/
-build/
-*.spec
+# Evitar que credenciais se escondam em subpastas (ex: deploy/ ou config/)
+**/credenciais.json
 
-# python
-__pycache__/
-*.pyc
+# =========================================================================
+# AMBIENTE VIRTUAL E CACHE DO PYTHON
+# =========================================================================
 .venv/
 venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
 
-# logs e artefactos
+# =========================================================================
+# LOGS E ARTEFATOS TEMPORÁRIOS
+# =========================================================================
 logs/
+*.log
 artifacts/
+tmp/
+*.png
+*.jpeg
+*.jpg
+chrome_installer.exe
+
+# =========================================================================
+# SISTEMA OPERATIVO
+# =========================================================================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# =========================================================================
+# AMBIENTES DE DESENVOLVIMENTO (VS Code, PyCharm)
+# =========================================================================
+.vscode/
+.idea/

@@ -21,7 +21,7 @@ git push origin main ou git push origin master, dependendo do nome da tua branch
 
 🚀 Passo 1: Aceder à pasta do projeto no servidor
 ssh -i chave.key ubuntu@132.145.57.133
-cd whatsapp-bot-reply
+cd ~/soma-automation
 
 🚀 Passo 2: Descarregar as atualizações do GitHub
 git pull

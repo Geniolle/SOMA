@@ -1,28 +1,37 @@
-###################################################################################
-# CONFIGURAÇÕES GERAIS DO PROJETO SOMA
-###################################################################################
-
 import os
+import sys
+from pathlib import Path
 
-# URL do site do SOMA
-SOMA_URL_INICIAL = "https://verbodavida.info/apps/index.php"
+# 1. Ajustar o caminho para o Python encontrar os ficheiros na pasta config
+BASE_DIR = Path(__file__).resolve().parent.parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
 
-# Credenciais do SOMA
-EMAIL_SOMA = "familialopesemportugal@gmail.com"
-SENHA_SOMA = "P@1internet"
+# 2. Importar a classe (Agora de forma simples)
+try:
+    from config.settings_class import Settings
+except ImportError:
+    from settings_class import Settings
 
-# Timeout padrão do Selenium
-SELENIUM_TIMEOUT = 20
+# 3. Caminho do .env
+ENV_PATH = BASE_DIR / "deploy" / ".env"
 
-# Diretório de logs
-LOGS_DIR = os.path.join(os.getcwd(), "logs")
-os.makedirs(LOGS_DIR, exist_ok=True)
+try:
+    # 4. Carregar as configurações
+    settings = Settings.from_env(env_file=str(ENV_PATH))
+    
+    # 5. Exportar variáveis para o robô
+    EMAIL_SOMA = settings.site_user
+    SENHA_SOMA = settings.site_password
+    SOMA_URL_INICIAL = settings.site_login_url
+    HEADLESS = settings.headless 
+    SELENIUM_TIMEOUT = settings.timeout_seconds
+    CREDENCIAIS_PATH = settings.google_credentials_path
+    SPREADSHEET_URL = settings.spreadsheet_url
+    SHEET_NAME = settings.sheet_contaordem
+    
+    print(f"✅ Configurações carregadas (Modo Visível: {not HEADLESS})")
 
-# Caminho para o ficheiro de credenciais do Google Sheets
-CREDENCIAIS_PATH = os.path.join(os.getcwd(), "config", "credenciais.json")
-
-# URL da planilha do Google Sheets
-SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1poVWJGSBb13_2S1YKEzvFmkB9Ru0ZVzfQ0OEcMkfOZw/edit?usp=sharing"
-
-# Nome da worksheet
-SHEET_NAME = "CONTAORDEM"
+except Exception as e:
+    print(f"❌ Erro fatal ao carregar configurações: {e}")
+    raise

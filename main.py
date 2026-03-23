@@ -1,38 +1,112 @@
 ###################################################################################
-# main.py
+# main.py (VERSÃO FINAL - SERVER-READY COMPLETAMENTE FUNCIONAL)
 ###################################################################################
 
-from selenium_scripts.web_driver import iniciar_webdriver, salvar_screenshot
+import sys
+import os
+import subprocess
+from pathlib import Path
+
+# FORÇAR O PYTHON A ENXERGAR A PASTA RAIZ
+BASE_DIR = Path(__file__).resolve().parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
+from selenium_scripts.web_driver import iniciar_webdriver
 from selenium_scripts.login import login_soma
 from selenium_scripts.processar_saida import processar_saida
+from selenium_scripts.processar_entrada import processar_entrada
+from selenium_scripts.processar_transferencia import processar_transferencia
 from sheets.sheets_service import obter_sheet, obter_todos_os_registros
-import time
 
-print("🧪 Teste inicial do WebDriver, Google Sheets e processo SAÍDA")
+print("🚀 Iniciando Orquestrador SOMA: Entradas, Transferências e Saídas")
 
-# Inicializar WebDriver
-driver = iniciar_webdriver()
-print("✅ WebDriver inicializado com sucesso!")
+try:
+    sheet = obter_sheet()
+    registros = obter_todos_os_registros(sheet)
+    cabecalho = sheet.row_values(1)
+    col_doc_soma = cabecalho.index('DOC. SOMA') + 1 if 'DOC. SOMA' in cabecalho else None
 
-# Login no sistema SOMA
-login_soma(driver)
+    registros_para_processar = []
+    for idx, linha in enumerate(registros, start=2):
+        doc_soma = str(linha.get("DOC. SOMA", "")).strip()
+        if doc_soma == "" or doc_soma == "Em processamento":
+            linha["_row_index"] = idx 
+            linha["_status_inicial"] = "Vazio" if doc_soma == "" else "Em processamento"
+            registros_para_processar.append(linha)
 
-# Conectar à folha Google Sheets
-sheet = obter_sheet()
+    # 1. Iniciamos o WebDriver SEMPRE
+    driver = iniciar_webdriver()
+    login_soma(driver)
 
-# Obter todos os dados
-registros = obter_todos_os_registros(sheet)
+    # 2. Processar Linhas (se existirem)
+    if not registros_para_processar:
+        print("✅ Nenhuma linha pendente para processamento no Excel.")
+    else:
+        prioridade = {"Entrada": 1, "Transferência": 2, "Saída": 3}
+        registros_para_processar.sort(key=lambda x: prioridade.get(str(x.get("TIPO", "")).strip().capitalize(), 99))
 
-# Iterar pelas linhas
-for idx, linha in enumerate(registros, start=2):
-    if linha.get("TIPO", "").strip().upper() == "SAÍDA" and not linha.get("STATUS"):
-        print(f"🔍 Encontrada linha para processamento: {linha}")
+        print(f"📊 Total de linhas a processar: {len(registros_para_processar)}")
+
+        for linha in registros_para_processar:
+            idx = linha["_row_index"]
+            tipo = str(linha.get("TIPO", "")).strip().capitalize()
+            status = linha["_status_inicial"]
+            
+            print(f"\n🔍 Lendo linha {idx} | Tipo: {tipo} | DOC SOMA Atual: [{status}]")
+            
+            if col_doc_soma and status == "Vazio":
+                try:
+                    sheet.update_cell(idx, col_doc_soma, "Em processamento")
+                except Exception:
+                    pass
+
+            try:
+                if tipo == "Saída":
+                    processar_saida(driver, linha, idx, sheet)
+                elif tipo == "Entrada":
+                    processar_entrada(driver, linha, idx, sheet)
+                elif tipo == "Transferência":
+                    # Transferência LIGADA!
+                    processar_transferencia(driver, linha, idx, sheet)
+            except Exception as e:
+                print(f"❌ Erro na linha {idx}: {e}")
+
+    # 3. Encerrar o driver de forma segura antes de chamar o próximo processo
+    driver.quit()
+    print("\n✅ Processamento do Orquestrador finalizado com sucesso. WebDriver encerrado.")
+
+    # =========================================================================
+    # 4. CHAMAR O PRÓXIMO PROCESSO (run_soma.py)
+    # =========================================================================
+    print("\n🔗 Passando o testemunho para o run_soma.py...")
+    
+    # Apontamos diretamente para o caminho correto do seu projeto
+    caminho_run_soma = BASE_DIR / "src" / "soma_app" / "workflows" / "run_soma.py"
+
+    if caminho_run_soma.exists():
         try:
-            processar_saida(driver, linha, idx, sheet)
-        except Exception as e:
-            print(f"❌ Erro ao processar a linha {idx}: {e}")
-            salvar_screenshot(driver, "erro_geral.png")
+            # 1. Copiamos o ambiente atual do Windows
+            env = os.environ.copy()
+            caminho_src = str(BASE_DIR / "src")
+            
+            # 2. Ensinamos ao novo terminal onde mora a pasta 'soma_app'
+            if "PYTHONPATH" in env:
+                env["PYTHONPATH"] = f"{caminho_src};{env['PYTHONPATH']}"
+            else:
+                env["PYTHONPATH"] = caminho_src
 
-# Encerrar WebDriver
-driver.quit()
-print("✅ WebDriver finalizado com sucesso.")
+            # 3. Executamos o script com este "novo conhecimento"
+            subprocess.run([sys.executable, str(caminho_run_soma)], env=env, check=True)
+            print("✅ run_soma.py executado com sucesso e chegou ao fim!")
+        except subprocess.CalledProcessError as e:
+            print(f"❌ O run_soma.py falhou durante a execução. Erro: {e}")
+    else:
+        print(f"⚠️ Ficheiro run_soma.py não encontrado em: {caminho_run_soma}")
+
+except Exception as e:
+    print(f"❌ Erro fatal no Orquestrador: {e}")
+    try:
+        driver.quit()
+    except:
+        pass
