@@ -6,24 +6,20 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import Select
 from selenium.common.exceptions import TimeoutException, ElementClickInterceptedException
 import time
 import datetime
 
-# Função utilitária base
 def tentar_encontrar_elemento(driver, by, valor, timeout=20):
     try:
         return WebDriverWait(driver, timeout).until(EC.presence_of_element_located((by, valor)))
     except:
         return None
 
-# Função para fazer scroll seguro para o centro do ecrã
 def scroll_to_element(driver, elemento):
     driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", elemento)
     time.sleep(0.4) 
 
-# Função Master para lidar com os dropdowns chatos do Select2
 def preencher_select2(driver, elemento_container, texto_pesquisa):
     scroll_to_element(driver, elemento_container)
     try:
@@ -44,7 +40,6 @@ def preencher_select2(driver, elemento_container, texto_pesquisa):
     selecao.send_keys(Keys.ENTER)
     time.sleep(0.5)
 
-# Função de redirecionamento original
 def redirecionar_para_inicio(driver, url, timeout=20):
     print()
     print("==================================================================")
@@ -103,6 +98,7 @@ def processar_entrada(driver, linha, index, sheet):
         except TimeoutException:
             print("Erro: Botão 'Nova Entrada/Saída' não encontrado ou não ficou clicável a tempo!")
             time.sleep(2)
+
 
         if tipo_xl == "Entrada":
             botao_radio_entrada = driver.find_element(By.XPATH, '/html/body/div[2]/div/div[3]/div/div/form/div[3]/div/div[2]/input')
@@ -165,20 +161,17 @@ def processar_entrada(driver, linha, index, sheet):
                 print("Erro: Campo para selecionar Forma de pagamento não encontrado.")
             
             
-            # --- NOVA LÓGICA DE CAIXA: USANDO A TAG <SELECT> ORIGINAL ---
             print(f"A forma de pagamento é {forma_de_pagamento_xl}. Selecionar o campo Caixa.")
             
             caixa_select_elemento = tentar_encontrar_elemento(driver, By.XPATH, '/html/body/div[2]/div/div[3]/div/div/form/div[20]/div/select')
             if caixa_select_elemento:
                 try:
-                    # Injeta a seleção diretamente no HTML, ignorando máscaras visuais (Select2)
                     script_js = f"""
                         var select = arguments[0];
                         var textoProcurado = '{caixa_xl}';
                         for (var i = 0; i < select.options.length; i++) {{
                             if (select.options[i].text.includes(textoProcurado)) {{
                                 select.selectedIndex = i;
-                                // Dispara o evento de 'change' para que a página saiba que mudámos o valor
                                 select.dispatchEvent(new Event('change', {{ bubbles: true }}));
                                 break;
                             }}
@@ -193,7 +186,6 @@ def processar_entrada(driver, linha, index, sheet):
                 print("Erro: Campo <select> do Caixa não encontrado com o XPath fornecido.")
             
             
-            # --- PREENCHIMENTO DA DESCRIÇÃO COM OCULTAÇÃO DA CAIXA DE SUGESTÕES ---
             descricao_campo = tentar_encontrar_elemento(driver, By.XPATH, '/html/body/div[2]/div/div[3]/div/div/form/div[6]/div/input')
             if not descricao_campo:
                 descricao_campo = tentar_encontrar_elemento(driver, By.XPATH, '/html/body/div[2]/div/div[3]/div/div/form/div[9]/div/input')
@@ -206,7 +198,6 @@ def processar_entrada(driver, linha, index, sheet):
                 time.sleep(0.5)
                 descricao_campo.send_keys(Keys.ESCAPE) 
                 
-                # Forçamos o painel de sugestões a ficar invisível
                 js_hide_sugestao = """
                 var xpath = "/html/body/div[2]/div/div[3]/div/div/form/div[6]/div/div/div";
                 var result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
@@ -219,7 +210,6 @@ def processar_entrada(driver, linha, index, sheet):
             else:
                 print("Campo de descrição não encontrado!")
 
-            # Selecionar o campo "Obs"
             observacao_campo = tentar_encontrar_elemento(driver, By.XPATH, '/html/body/div[2]/div/div[3]/div/div/form/div[21]/div/textarea')
             if observacao_campo:
                 scroll_to_element(driver, observacao_campo)
@@ -233,7 +223,6 @@ def processar_entrada(driver, linha, index, sheet):
             else:
                 print("Campo de observação não encontrado!")
                  
-            # Salvar o formulário
             botao_salvar_principal = tentar_encontrar_elemento(driver, By.XPATH, '/html/body/div[2]/div/div[3]/div/div/form/div[30]/div/button[1]')
             if botao_salvar_principal:
                 scroll_to_element(driver, botao_salvar_principal)
@@ -243,7 +232,6 @@ def processar_entrada(driver, linha, index, sheet):
             else:
                 print("Botão de salvar o formulário não encontrado!")
             
-            #5.1#################################################################################
             
             print(" ")
             print("(5.1) ===================================================")
@@ -325,26 +313,30 @@ def processar_entrada(driver, linha, index, sheet):
                     print("Modal SweetAlert desapareceu com sucesso.")
                 except TimeoutException:
                     print("Aviso: O modal SweetAlert ainda está visível após o tempo de espera.")
-
-                try:
-                    botao_voltar = WebDriverWait(driver, 20).until(
-                        EC.presence_of_element_located((By.XPATH, '/html/body/div[2]/div/div[2]/div/div/form/div[30]/div/button[2]'))
-                    )
-                    driver.execute_script("arguments[0].click();", botao_voltar)
-                    print("Clicou na opção 'Voltar' com sucesso!")
-                    time.sleep(1)
-                except TimeoutException:
-                    print("Erro: Botão 'Voltar' não ficou clicável a tempo.")
-                    time.sleep(2)
-
-                print( )
-               
             else:
-                print("Forma de pagamento é diferente de 'TRANSFERÊNCIA BANCÁRIA'. Pulando o processo de baixa de pagamento.")
+                print(f"A forma de pagamento é {forma_de_pagamento_xl}. O processo de baixa será ignorado.")
+
+            # ---- MOVIDO PARA FORA DO IF PARA EXECUTAR SEMPRE ----
+            try:
+                botao_voltar = WebDriverWait(driver, 5).until(
+                    EC.presence_of_element_located((By.XPATH, '/html/body/div[2]/div/div[2]/div/div/form/div[30]/div/button[2]'))
+                )
+                driver.execute_script("arguments[0].click();", botao_voltar)
+                print("Clicou na opção 'Voltar' com sucesso!")
+                time.sleep(1)
+            except TimeoutException:
+                print("Aviso: Botão 'Voltar' não encontrado diretamente. Usando menu lateral para regressar...")
+                try:
+                    menu_entradas_saidas = WebDriverWait(driver, 5).until(
+                        EC.presence_of_element_located((By.XPATH, '//span[contains(text(),"Entradas/saídas")]'))
+                    )
+                    driver.execute_script("arguments[0].click();", menu_entradas_saidas)
+                    print("Regressou ao menu 'Entradas/Saídas' com sucesso!")
+                    time.sleep(2)
+                except Exception as e:
+                    print(f"Erro ao tentar regressar ao ecrã inicial: {e}")
         
 
-            #5.2 #################################################################################
-                
             print("(5.2) ===================================================")
             print(f"Iniciando o processo pesquisa do nº soma do documento")
             print(" ")
@@ -373,7 +365,7 @@ def processar_entrada(driver, linha, index, sheet):
                 data_intervaloA.clear()
                 data_intervaloA.send_keys(data_xl)
                 time.sleep(0.5)
-                data_intervaloA.send_keys(Keys.ESCAPE)
+                data_intervaloA.send_keys(Keys.ESCAPE) # Fecha o calendário
                 print(f"Data início preenchida com sucesso: {data_xl}")
             else:
                 print("Campo de data inicial não encontrado!")
@@ -384,7 +376,7 @@ def processar_entrada(driver, linha, index, sheet):
                 data_intervaloB.clear()
                 data_intervaloB.send_keys(data_xl)
                 time.sleep(0.5)
-                data_intervaloB.send_keys(Keys.ESCAPE) 
+                data_intervaloB.send_keys(Keys.ESCAPE) # Fecha o calendário
                 print(f"Data fim preenchida com sucesso: {data_xl}")
             else:
                 print("Campo de data final não encontrado!")
@@ -421,8 +413,6 @@ def processar_entrada(driver, linha, index, sheet):
                 time.sleep(2)
                 doc_soma = "000000"
             
-            #5.3 #################################################################################
-
             print(" ")
             print("(5.3) ===================================================")
             print(f"Iniciando o processo pesquisa DESCRIÇÃO do documento: {doc_soma}")

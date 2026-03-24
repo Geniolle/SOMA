@@ -7,7 +7,7 @@ git status
 git add .
 
 🚀 Passo 3: Criar o "Pacote" (Commit) com uma mensagem
-git commit -m " "
+git commit -m ""
 
 🚀 Passo 4: Enviar para a Nuvem (Push)
 git push
@@ -40,7 +40,8 @@ npm install
 pm2 restart all
 
 🚀 Passo 5: Para veres os logs e confirmares que reiniciou bem
-pm2 logs
+pm2 logs orquestrador-soma
+pm2 status
 
 
 
@@ -52,3 +53,13 @@ source .venv/bin/activate
 
 # 3. Disparar o orquestrador!
 python main.py
+
+
+Ver o painel de controlo (Dashboard visual de RAM/CPU):
+pm2 monit
+
+Parar o robô temporariamente (se precisar de mexer no Excel com calma):
+pm2 stop orquestrador-soma
+
+Voltar a ligar o robô:
+pm2 start orquestrador-soma

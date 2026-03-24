@@ -379,17 +379,29 @@ def processar_saida(driver, linha, index, sheet):
                     print("Modal SweetAlert desapareceu com sucesso.")
                 except TimeoutException:
                     print("Aviso: O modal SweetAlert ainda está visível após o tempo de espera.")
+            else:
+                print(f"A forma de pagamento é {forma_de_pagamento_xl}. O processo de baixa será ignorado.")
 
+
+            # ---- MOVIDO PARA FORA DO IF PARA EXECUTAR SEMPRE ----
+            try:
+                botao_voltar = WebDriverWait(driver, 5).until(
+                    EC.presence_of_element_located((By.XPATH, '/html/body/div[2]/div/div[2]/div/div/form/div[30]/div/button[2]'))
+                )
+                driver.execute_script("arguments[0].click();", botao_voltar)  
+                print("Clicou na opção 'Voltar' com sucesso!")
+                time.sleep(1)  
+            except TimeoutException:
+                print("Aviso: Botão 'Voltar' não encontrado diretamente. Usando menu lateral para regressar...")
                 try:
-                    botao_voltar = WebDriverWait(driver, 20).until(
-                        EC.presence_of_element_located((By.XPATH, '/html/body/div[2]/div/div[2]/div/div/form/div[30]/div/button[2]'))
+                    menu_entradas_saidas = WebDriverWait(driver, 5).until(
+                        EC.presence_of_element_located((By.XPATH, '//span[contains(text(),"Entradas/saídas")]'))
                     )
-                    driver.execute_script("arguments[0].click();", botao_voltar)  
-                    print("Clicou na opção 'Voltar' com sucesso!")
-                    time.sleep(1)  
-                except TimeoutException:
-                    print("Erro: Botão 'Voltar' não ficou clicável a tempo!")
+                    driver.execute_script("arguments[0].click();", menu_entradas_saidas)
+                    print("Regressou ao menu 'Entradas/Saídas' com sucesso!")
                     time.sleep(2)
+                except Exception as e:
+                    print(f"Erro ao tentar regressar ao ecrã inicial: {e}")
 
             print(" ")
             print("(4.4) ===================================================")
