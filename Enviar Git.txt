@@ -37,3 +37,14 @@ pm2 restart all
 
 🚀 Passo 5: Para veres os logs e confirmares que reiniciou bem
 pm2 logs
+
+
+
+# 1. Entrar na pasta correta
+cd SOMA
+
+# 2. Ativar a bolha do Python (o ambiente virtual)
+source .venv/bin/activate
+
+# 3. Disparar o orquestrador!
+python main.py

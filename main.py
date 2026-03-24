@@ -67,8 +67,10 @@ try:
                 elif tipo == "Entrada":
                     processar_entrada(driver, linha, idx, sheet)
                 elif tipo == "Transferência":
-                    # Transferência LIGADA!
+                    # Transferência AGORA ESTÁ OFICIALMENTE LIGADA!
                     processar_transferencia(driver, linha, idx, sheet)
+                else:
+                    print(f"⚠️ Tipo '{tipo}' desconhecido. A saltar linha {idx}.")
             except Exception as e:
                 print(f"❌ Erro na linha {idx}: {e}")
 
