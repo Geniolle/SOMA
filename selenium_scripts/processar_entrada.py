@@ -316,8 +316,9 @@ def processar_entrada(driver, linha, index, sheet):
             else:
                 print(f"A forma de pagamento é {forma_de_pagamento_xl}. O processo de baixa será ignorado.")
 
-            # ---- MOVIDO PARA FORA DO IF PARA EXECUTAR SEMPRE ----
+            # ---- AJUSTE DE REDIRECIONAMENTO ROBUSTO PARA DINHEIRO E TRANSFERÊNCIA ----
             try:
+                # Tenta o botão Voltar oficial
                 botao_voltar = WebDriverWait(driver, 5).until(
                     EC.presence_of_element_located((By.XPATH, '/html/body/div[2]/div/div[2]/div/div/form/div[30]/div/button[2]'))
                 )
@@ -325,16 +326,10 @@ def processar_entrada(driver, linha, index, sheet):
                 print("Clicou na opção 'Voltar' com sucesso!")
                 time.sleep(1)
             except TimeoutException:
-                print("Aviso: Botão 'Voltar' não encontrado diretamente. Usando menu lateral para regressar...")
-                try:
-                    menu_entradas_saidas = WebDriverWait(driver, 5).until(
-                        EC.presence_of_element_located((By.XPATH, '//span[contains(text(),"Entradas/saídas")]'))
-                    )
-                    driver.execute_script("arguments[0].click();", menu_entradas_saidas)
-                    print("Regressou ao menu 'Entradas/Saídas' com sucesso!")
-                    time.sleep(2)
-                except Exception as e:
-                    print(f"Erro ao tentar regressar ao ecrã inicial: {e}")
+                # Caso o botão não esteja visível (comum em fluxos de Dinheiro), força via URL
+                print("Aviso: Botão 'Voltar' não visível. Redirecionando para a listagem via URL...")
+                driver.get("https://verbodavida.info/IVV/?mod=ivv&exec=entradas_saidas")
+                time.sleep(2)
         
 
             print("(5.2) ===================================================")
