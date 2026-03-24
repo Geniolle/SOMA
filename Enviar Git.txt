@@ -7,7 +7,7 @@ git status
 git add .
 
 🚀 Passo 3: Criar o "Pacote" (Commit) com uma mensagem
-git commit -m "Mensagem do commit"
+git commit -m " "
 
 🚀 Passo 4: Enviar para a Nuvem (Push)
 git push
