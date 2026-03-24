@@ -21,7 +21,11 @@ git push origin main ou git push origin master, dependendo do nome da tua branch
 
 🚀 Passo 1: Aceder à pasta do projeto no servidor
 ssh -i chave.key ubuntu@132.145.57.133
-cd ~/soma-automation
+cd ~/soma-automation/SOMA
+
+Forçar o servidor a descartar alterações locais e ficar igual ao GitHub:
+git reset --hard origin/main
+
 
 🚀 Passo 2: Descarregar as atualizações do GitHub
 git pull
