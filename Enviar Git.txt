@@ -50,6 +50,7 @@ pm2 status
 cd SOMA
 
 # 2. Ativar a bolha do Python (o ambiente virtual)
+.\.venv\Scripts\Activate.ps1
 source .venv/bin/activate
 
 # 3. Disparar o orquestrador!
