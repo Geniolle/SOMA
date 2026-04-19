@@ -144,7 +144,7 @@ def _create_actions(driver: webdriver.Chrome) -> Any:
     Cria o wrapper de actions do projeto (se existir).
     """
     try:
-        from soma_app.automation.actions import Actions, ActionConfig  # type: ignore
+        from soma_app.automation.actions import ActionConfig, Actions  # type: ignore
 
         # Actions agora exige cfg: ActionConfig
         return Actions(driver, ActionConfig())

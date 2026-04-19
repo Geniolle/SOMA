@@ -3,8 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, Optional, Tuple
-
+from typing import Any, Dict, Optional
 
 # Estilo do report:
 # - legacy (default): imprime blocos e mensagens humanas

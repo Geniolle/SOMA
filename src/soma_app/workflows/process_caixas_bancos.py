@@ -4,9 +4,9 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Tuple
 
-from soma_app.infra.trace import step, log_kv
-from soma_app.workflows.process_contaordem import SheetsTable
 from soma_app.automation.pages.caixas_bancos_page import CaixasBancosPage
+from soma_app.infra.trace import log_kv, step
+from soma_app.workflows.process_contaordem import SheetsTable
 
 log = logging.getLogger("soma_app.workflows.caixas_bancos")
 

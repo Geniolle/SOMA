@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "soma-automation"
+version = "0.1.0"
+description = "Automacao financeira SOMA com Selenium/API e Google Sheets"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "gspread>=6.2,<7",
+  "google-auth>=2.49,<3",
+  "oauth2client>=4.1,<5",
+  "openpyxl>=3.1,<4",
+  "python-dotenv>=1.2,<2",
+  "requests>=2.32,<3",
+  "selenium>=4.43,<5",
+  "webdriver-manager>=4.0,<5",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3,<9",
+  "ruff>=0.12,<1",
+]
+
+[project.scripts]
+soma-run = "soma_app.workflows.run_soma:main"
+soma-scheduler = "soma_app.scheduler:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["soma_app*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+src = ["src", "tests", "config"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"

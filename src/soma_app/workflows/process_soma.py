@@ -13,7 +13,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 
 from soma_app.automation.pages.entradas_saidas_page import EntradasSaidasPage
-from soma_app.infra.trace import step, log_kv
+from soma_app.infra.trace import log_kv, step
 from soma_app.workflows.process_contaordem import SheetsTable
 
 log = logging.getLogger("soma_app.workflows.process_soma")

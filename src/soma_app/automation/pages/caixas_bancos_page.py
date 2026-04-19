@@ -4,11 +4,11 @@ import logging
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from selenium.webdriver.common.by import By
 from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.common.by import By
 
 from soma_app.automation.actions import Actions
-from soma_app.infra.trace import step, log_kv
+from soma_app.infra.trace import log_kv, step
 
 log = logging.getLogger("soma_app.pages.caixas_bancos")
 

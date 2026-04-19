@@ -1,32 +1,22 @@
-###################################################################################
-# agendador.py
-###################################################################################
-import time
-import subprocess
+from __future__ import annotations
+
+import importlib
 import sys
-import datetime
+from pathlib import Path
 
-TEMPO_ESPERA_SEGUNDOS = 120  # 2 minutos
 
-print("🕒 Agendador do Orquestrador SOMA iniciado!")
-print(f"⚙️ Configurado para aguardar {TEMPO_ESPERA_SEGUNDOS} segundos entre cada execução completa.")
+def _ensure_src_path() -> None:
+    base_dir = Path(__file__).resolve().parent
+    src_dir = base_dir / "src"
+    if str(src_dir) not in sys.path:
+        sys.path.insert(0, str(src_dir))
 
-while True:
-    agora = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-    print(f"\n==================================================================")
-    print(f"🚀 Iniciando nova execução do Orquestrador - {agora}")
-    print(f"==================================================================")
-    
-    try:
-        # Executa o main.py e ESPERA que ele termine. 
-        # Isto garante 100% que nunca haverá execuções paralelas!
-        subprocess.run([sys.executable, "main.py"], check=False)
-    except Exception as e:
-        print(f"❌ Erro crítico ao tentar iniciar o main.py: {e}")
-    
-    agora_fim = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-    print(f"\n✅ Execução terminada em {agora_fim}.")
-    print(f"⏳ A aguardar {TEMPO_ESPERA_SEGUNDOS} segundos para a próxima ronda...\n")
-    
-    # Pausa o script durante 2 minutos
-    time.sleep(TEMPO_ESPERA_SEGUNDOS)
+
+def main() -> int:
+    _ensure_src_path()
+    scheduler_main = importlib.import_module("soma_app.scheduler").main
+    return int(scheduler_main())
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

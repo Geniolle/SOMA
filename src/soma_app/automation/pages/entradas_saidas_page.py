@@ -12,7 +12,7 @@ from selenium.webdriver.support.ui import Select
 
 from soma_app.automation.actions import Actions
 from soma_app.domain.models import ContaOrdemRow, TipoMovimento
-from soma_app.infra.trace import step, log_kv
+from soma_app.infra.trace import log_kv, step
 
 log = logging.getLogger("soma_app.pages.entradas_saidas")
 

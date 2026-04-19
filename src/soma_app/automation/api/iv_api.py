@@ -7,7 +7,7 @@ import re
 from typing import Any, Dict, Iterable, Optional
 
 from soma_app.domain.models import ContaOrdemRow, TipoMovimento
-from soma_app.infra.soma_api_client import SomaApiClient, JsonType
+from soma_app.infra.soma_api_client import JsonType, SomaApiClient
 
 log = logging.getLogger("soma_app.automation.api.iv")
 

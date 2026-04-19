@@ -1,51 +1,51 @@
-###################################################################################
-# sheets/sheets_service.py
-###################################################################################
+from __future__ import annotations
+
+import importlib
+import os
+import sys
+from pathlib import Path
+from typing import Any
 
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-from config.config import CREDENCIAIS_PATH, SPREADSHEET_URL, SHEET_NAME
+
+
+def _ensure_src_path() -> None:
+    base_dir = Path(__file__).resolve().parent.parent
+    src_dir = base_dir / "src"
+    if str(src_dir) not in sys.path:
+        sys.path.insert(0, str(src_dir))
+
+
+def _load_settings() -> Any:
+    _ensure_src_path()
+    settings_cls = importlib.import_module("soma_app.config.settings").Settings
+    env_file = (os.getenv("ENV_FILE") or "").strip() or None
+    return settings_cls.from_env(env_file=env_file)
+
 
 def obter_sheet():
-    """
-    Estabelece conexão com o Google Sheets e retorna o objeto da sheet.
-    """
-    try:
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENCIAIS_PATH, scope)
-        client = gspread.authorize(creds)
+    settings = _load_settings()
+    client = gspread.service_account(filename=str(settings.google_credentials_path))
+    spreadsheet = client.open_by_url(settings.spreadsheet_url)
+    sheet = spreadsheet.worksheet(settings.sheet_contaordem)
+    print(f"Worksheet '{settings.sheet_contaordem}' carregada com sucesso.")
+    return sheet
 
-        spreadsheet = client.open_by_url(SPREADSHEET_URL)
-        sheet = spreadsheet.worksheet(SHEET_NAME)
-        print(f"✅ Worksheet '{SHEET_NAME}' carregada com sucesso.")
-        return sheet
-
-    except Exception as e:
-        print(f"❌ Erro ao conectar com o Google Sheets: {e}")
-        raise
 
 def obter_todos_os_registros(sheet):
-    """
-    Retorna todas as linhas da folha como lista de dicionários.
-    """
-    try:
-        registros = sheet.get_all_records()
-        print(f"✅ {len(registros)} linhas carregadas da folha '{SHEET_NAME}'.")
-        return registros
-    except Exception as e:
-        print(f"❌ Erro ao obter os registros da folha: {e}")
-        raise
+    registros = sheet.get_all_records()
+    print(f"{len(registros)} linhas carregadas da folha.")
+    return registros
+
 
 def atualizar_linha(sheet, indice_linha, dados):
-    """
-    Atualiza os valores de uma linha específica na folha.
-    O índice começa em 2 (linha 1 é cabeçalho).
-    """
-    try:
-        for coluna, valor in dados.items():
-            cell = sheet.find(coluna)
-            sheet.update_cell(indice_linha, cell.col, valor)
-        print(f"✅ Linha {indice_linha} atualizada com sucesso.")
-    except Exception as e:
-        print(f"❌ Erro ao atualizar linha {indice_linha}: {e}")
-        raise
+    cabecalho = sheet.row_values(1)
+    mapa = {str(col).strip().upper(): i + 1 for i, col in enumerate(cabecalho)}
+
+    for coluna, valor in dados.items():
+        col_idx = mapa.get(str(coluna).strip().upper())
+        if not col_idx:
+            continue
+        sheet.update_cell(indice_linha, col_idx, valor)
+
+    print(f"Linha {indice_linha} atualizada com sucesso.")

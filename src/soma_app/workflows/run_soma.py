@@ -10,11 +10,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from soma_app.automation.api.iv_api import EntradasSaidasApi, TransferenciasApi
+from soma_app.automation.pages.entradas_saidas_page import EntradasSaidasPage
+from soma_app.automation.pages.login_page import LoginPage
+from soma_app.automation.pages.transferencias_page import TransferenciasPage
 from soma_app.domain.models import ContaOrdemRow, TipoMovimento
 from soma_app.infra.log_config import configure_logging, ensure_artifacts_dirs
 from soma_app.infra.sheets_client import SheetsClient
+from soma_app.infra.soma_api_client import SomaApiClient
 from soma_app.infra.trace import new_run_id, step
 from soma_app.infra.webdriver_factory import WebDriverFactory
+from soma_app.workflows.process_caixas_bancos import atualizar_caixas_bancos
 from soma_app.workflows.process_contaordem import (
     DOC_COL_DEFAULT,
     LOCK_VALUE_DEFAULT,
@@ -22,15 +28,7 @@ from soma_app.workflows.process_contaordem import (
     SheetsTable,
     preprocess_contaordem,
 )
-from soma_app.workflows.process_caixas_bancos import atualizar_caixas_bancos
 from soma_app.workflows.process_soma import atualizar_sheet_soma
-
-from soma_app.automation.pages.entradas_saidas_page import EntradasSaidasPage
-from soma_app.automation.pages.login_page import LoginPage
-from soma_app.automation.pages.transferencias_page import TransferenciasPage
-
-from soma_app.infra.soma_api_client import SomaApiClient
-from soma_app.automation.api.iv_api import EntradasSaidasApi, TransferenciasApi
 
 logger = logging.getLogger(__name__)
 

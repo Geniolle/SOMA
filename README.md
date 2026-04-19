@@ -1,31 +1,99 @@
-# 🤖 Orquestrador SOMA - Automação Financeira
+# SOMA Automation
 
-Este projeto é um robô de automação web desenvolvido em Python com Selenium. O seu objetivo é ler dados de uma folha de cálculo no Google Sheets e efetuar automaticamente os registos financeiros (Entradas, Saídas e Transferências) no sistema web SOMA, finalizando com a extração dos saldos atualizados de Caixa.
+Projeto de automacao financeira para o sistema SOMA, com leitura/escrita em Google Sheets e execucao por Selenium/API.
 
-## ✨ Funcionalidades
+## O que foi padronizado
 
-- **Orquestração Inteligente:** Lê a aba `CONTAORDEM` no Google Sheets e processa apenas as linhas pendentes (onde o `DOC. SOMA` está vazio).
-- **Três Fluxos de Trabalho:** Processa automaticamente Entradas, Saídas (com pagamentos e baixas) e Transferências.
-- **Atualização de Caixas:** Extrai os saldos finais (Caixa Diário, Caixa Banco, D. Crianças, Verbo Café, Verbo Shop) e atualiza a aba `GERENCIAR CAIXAS`.
-- **Manutenção Zero de WebDriver:** Utiliza o `webdriver-manager` para descarregar e atualizar automaticamente o ChromeDriver em background.
-- **Integração Modular:** Após terminar as suas tarefas, aciona automaticamente o motor secundário (`src/soma_app/workflows/run_soma.py`) para processamento do histórico.
-- **Server-Ready:** Preparado para rodar em servidores Linux (Oracle) em modo invisível (`Headless`), de forma totalmente silenciosa e sem pop-ups.
+- Estrutura de pacote Python em `src/soma_app`
+- Entradas unificadas:
+  - `python main.py` -> executa o workflow principal
+  - `python agendador.py` -> executa em loop
+- Configuracao centralizada em variaveis de ambiente (`.env`)
+- Base de qualidade com `pyproject.toml`, `ruff` e `pytest`
 
----
+## Estrutura
 
-## 🛠️ Pré-requisitos
+```text
+SOMA/
+  config/                  # compatibilidade com scripts legados
+  src/soma_app/
+    automation/            # pages, actions, API adapter
+    config/                # settings
+    domain/                # modelos e regras
+    infra/                 # webdriver, sheets client, logging, tracing
+    workflows/             # orquestracao principal
+    scheduler.py           # loop de execucao
+  tests/                   # testes unitarios
+  main.py                  # wrapper para workflow principal
+  agendador.py             # wrapper para scheduler
+  pyproject.toml
+  .env.example
+```
 
-Para executar este projeto num ambiente local ou servidor, certifique-se de ter:
+## Requisitos
 
-1. **Python 3.12+** instalado.
-2. **Google Chrome** (ou Chromium) instalado nativamente na máquina/servidor.
-3. Conta de Serviço do Google Cloud (para manipulação do Sheets).
+- Python 3.12+
+- Google Chrome instalado
+- Conta de servico Google com acesso a planilha
 
----
+## Setup rapido
 
-## 🚀 Instalação e Configuração
-
-**1. Clonar o repositório:**
 ```bash
-git clone <url-do-seu-repositorio>
-cd SOMA
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+# opcional (ferramentas de desenvolvimento)
+pip install -r requirements-dev.txt
+```
+
+Para instalacao reprodutivel com versoes fixas:
+
+```bash
+pip install -r requirements.lock.txt
+```
+
+Crie o arquivo de ambiente:
+
+```bash
+copy .env.example deploy\.env
+```
+
+Preencha no `deploy/.env`:
+
+- `GOOGLE_CREDENTIALS_PATH`
+- `SPREADSHEET_URL`
+- `SITE_USER`
+- `SITE_PASSWORD`
+
+## Execucao
+
+Rodar uma vez:
+
+```bash
+python main.py
+```
+
+Rodar em loop:
+
+```bash
+python agendador.py
+```
+
+Tambem disponivel por entrypoint:
+
+```bash
+soma-run
+soma-scheduler
+```
+
+## Qualidade
+
+```bash
+ruff check .
+pytest
+```
+
+## Seguranca
+
+- Nao versionar credenciais, tokens e arquivos `.env`
+- Manter `deploy/credenciais.json` e `deploy/.env` apenas localmente

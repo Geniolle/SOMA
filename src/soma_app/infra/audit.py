@@ -4,13 +4,11 @@ from __future__ import annotations
 import contextvars
 import json
 import logging
-import os
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
-
+from typing import Any, Dict, List, Optional
 
 _AUDIT_CTX: contextvars.ContextVar[Dict[str, Any]] = contextvars.ContextVar("AUDIT_CTX", default={})
 

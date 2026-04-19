@@ -1,53 +1,39 @@
+from __future__ import annotations
+
+import importlib
 import os
+import sys
 from pathlib import Path
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
-from config.config import HEADLESS
+from typing import Any
+
+
+def _ensure_src_path() -> None:
+    base_dir = Path(__file__).resolve().parent.parent
+    src_dir = base_dir / "src"
+    if str(src_dir) not in sys.path:
+        sys.path.insert(0, str(src_dir))
+
+
+def _load_settings() -> Any:
+    _ensure_src_path()
+    settings_cls = importlib.import_module("soma_app.config.settings").Settings
+    env_file = (os.getenv("ENV_FILE") or "").strip() or None
+    return settings_cls.from_env(env_file=env_file)
+
 
 def iniciar_webdriver():
-    """
-    Inicializa o WebDriver com configurações otimizadas para evitar o modo mobile
-    e garantir compatibilidade com servidores Linux.
-    """
-    chrome_options = Options()
-    
-    if HEADLESS:
-        chrome_options.add_argument("--headless=new")
-    
-    # === A CURA PARA A CEGUEIRA NO SERVIDOR LINUX ===
-    # Forçamos uma resolução Full HD e um User-Agent de Desktop
-    chrome_options.add_argument("--window-size=1920,1080")
-    chrome_options.add_argument("--force-device-scale-factor=1")
-    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-    
-    # Otimizações para ambiente Linux/Server (essencial para evitar crashes)
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
+    _ensure_src_path()
+    settings = _load_settings()
+    create_driver = importlib.import_module("soma_app.infra.webdriver_factory").create_driver
+    return create_driver(settings=settings, headless=settings.headless)
 
-    # Instalação automática do Driver compatível
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=chrome_options)
-    
-    # Maximizar a janela para garantir que todos os elementos estão visíveis
-    driver.maximize_window()
-    
-    return driver
 
 def salvar_screenshot(driver, nome_arquivo):
-    """
-    Função auxiliar utilizada pelo login.py e outros scripts para capturar 
-    a tela em caso de erro ou para auditoria.
-    """
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
+    target = log_dir / nome_arquivo
     try:
-        # Cria a pasta logs se ela não existir
-        pasta_logs = Path("logs")
-        pasta_logs.mkdir(exist_ok=True)
-        
-        caminho_final = pasta_logs / nome_arquivo
-        driver.save_screenshot(str(caminho_final))
-        print(f"📸 Screenshot salva em: {caminho_final}")
-    except Exception as e:
-        print(f"❌ Falha ao salvar screenshot: {e}")
+        driver.save_screenshot(str(target))
+        print(f"Screenshot salva em: {target}")
+    except Exception as exc:
+        print(f"Falha ao salvar screenshot: {exc}")

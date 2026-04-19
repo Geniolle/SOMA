@@ -6,12 +6,12 @@ from typing import Any, List, Tuple
 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 
 from soma_app.automation.actions import Actions
 from soma_app.domain.models import ContaOrdemRow
-from soma_app.infra.trace import step, log_kv
+from soma_app.infra.trace import log_kv, step
 
 log = logging.getLogger("soma_app.pages.transferencias")
 
@@ -125,7 +125,7 @@ class TransferenciasPage:
                 txt = (el.text or "").strip()
             if v.lower() not in txt.lower():
                 raise RuntimeError(f"{field} não foi selecionado (linha {row.row_number}). Esperado conter '{v}', mas ficou '{txt}'.")
-        except Exception as e:
+        except Exception:
             p = self.a.screenshot(f"transfer_select2_fail_{field.lower().replace(' ','_')}_row_{row.row_number}")
             log_kv(log, logging.ERROR, "Select2 não confirmou seleção.", field=field, row=row.row_number, value=v, url=self.a.driver.current_url, screenshot=p)
             raise

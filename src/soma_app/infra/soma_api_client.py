@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional, Union
 import requests
 
 try:
-    from soma_app.infra.trace import step, log_kv  # type: ignore
+    from soma_app.infra.trace import log_kv, step  # type: ignore
 except Exception:  # pragma: no cover
     step = None  # type: ignore
     log_kv = None  # type: ignore

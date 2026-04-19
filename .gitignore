@@ -1,16 +1,15 @@
-﻿# =========================================================================
-# SEGURANÇA MÁXIMA (Chaves e Credenciais)
+# =========================================================================
+# Seguranca
 # =========================================================================
 *.env
 .env
+deploy/.env
 credenciais.json
+**/credenciais.json
 chave.key
 
-# Evitar que credenciais se escondam em subpastas (ex: deploy/ ou config/)
-**/credenciais.json
-
 # =========================================================================
-# AMBIENTE VIRTUAL E CACHE DO PYTHON
+# Ambiente Python
 # =========================================================================
 .venv/
 venv/
@@ -19,9 +18,22 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+.python-version
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
 
 # =========================================================================
-# LOGS E ARTEFATOS TEMPORÁRIOS
+# Build / Packaging
+# =========================================================================
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# =========================================================================
+# Logs e artefatos
 # =========================================================================
 logs/
 *.log
@@ -33,14 +45,14 @@ tmp/
 chrome_installer.exe
 
 # =========================================================================
-# SISTEMA OPERATIVO
+# Sistema operativo
 # =========================================================================
 .DS_Store
 Thumbs.db
 desktop.ini
 
 # =========================================================================
-# AMBIENTES DE DESENVOLVIMENTO (VS Code, PyCharm)
+# IDEs
 # =========================================================================
 .vscode/
 .idea/

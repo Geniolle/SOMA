@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+import unicodedata
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Iterable, List, Optional
-
-import unicodedata
+from typing import Any, Dict, Iterable
 
 
 def _strip(s: Any) -> str:
