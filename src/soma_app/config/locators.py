@@ -111,29 +111,53 @@ def load_page_locator_config(settings: Any, page_name: str) -> Dict[str, Any]:
 
 def apply_locator_overrides(page_obj: Any, page_name: str) -> None:
     cfg = load_page_locator_config(getattr(page_obj, "settings", None), page_name)
-    if not cfg:
-        return
 
     cls = type(page_obj)
     tuple_overrides: dict[Locator, Locator] = {}
     explicit_lists: set[str] = set()
 
+    DERIVED_LOCATORS = {"RADIO_ANY_CANDIDATES", "FORM_READY_CANDIDATES", "ANY_VALUE_CANDIDATES"}
+
+    def _is_placeholder(val: Any) -> bool:
+        if isinstance(val, tuple) and len(val) == 2 and all(isinstance(x, str) for x in val):
+            return not val[1].strip()
+        if isinstance(val, list):
+            return not val or all(_is_placeholder(x) for x in val)
+        return False
+
     for name, default in vars(cls).items():
         if not name.isupper():
             continue
 
-        current = getattr(page_obj, name, default)
-
-        if _is_locator(default):
-            loc = _coerce_locator(cfg.get(name), current) if name in cfg else current
-            setattr(page_obj, name, loc)
-            tuple_overrides[default] = loc
+        if name in DERIVED_LOCATORS:
             continue
 
-        if _is_locator_list(default):
-            if name in cfg:
-                setattr(page_obj, name, _coerce_locator_list(cfg.get(name), current))
-                explicit_lists.add(name)
+        is_loc = _is_locator(default)
+        is_loc_lst = _is_locator_list(default)
+
+        if not (is_loc or is_loc_lst):
+            continue
+
+        if name not in cfg:
+            if _is_placeholder(default):
+                raise KeyError(f"Locator obrigatório '{name}' não configurado na secção '{page_name}' do JSON.")
+            continue
+
+        current = getattr(page_obj, name, default)
+
+        if is_loc:
+            loc = _coerce_locator(cfg.get(name), current)
+            if loc is None:
+                raise ValueError(f"Locator '{name}' inválido na secção '{page_name}' do JSON.")
+            setattr(page_obj, name, loc)
+            tuple_overrides[default] = loc
+
+        elif is_loc_lst:
+            locs = _coerce_locator_list(cfg.get(name), current)
+            if not locs and _is_placeholder(default):
+                raise ValueError(f"Lista de locators '{name}' vazia ou inválida na secção '{page_name}' do JSON.")
+            setattr(page_obj, name, locs)
+            explicit_lists.add(name)
 
     for name, default in vars(cls).items():
         if not name.isupper() or name in explicit_lists or not _is_locator_list(default):

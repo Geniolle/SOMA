@@ -1,8 +1,22 @@
 {
+  "common": {
+    "SELECT2_SEARCH": "/html/body/span/span/span[1]/input"
+  },
+  "login": {
+    "EMAIL": { "by": "name", "value": "email" },
+    "SENHA": { "by": "name", "value": "senha" },
+    "SUBMIT": { "by": "name", "value": "submit" },
+    "SOMA_READY": "//span[contains(text(),\"Entradas/saídas\")]",
+    "SOMA_BUTTON_CANDIDATES": [
+      { "by": "id", "value": "285" },
+      "//*[@id='285']",
+      "//*[self::a or self::button][contains(.,'SOMA') or contains(.,'Soma')]"
+    ]
+  },
   "entradas_saidas": {
     "MENU_ENTRADAS_SAIDAS_CANDIDATES": [
-      "//*[self::a or self::button or self::span][contains(.,'Entradas') and (contains(.,'Saídas') or contains(.,'Saidas'))]",
-      "//*[contains(.,'Entradas') and (contains(.,'Saídas') or contains(.,'Saidas'))]"
+      "//*[self::a or self::button or self::span][contains(.,'Entradas') and (contains(.,'Saídas') or contains(.,'Saidas') or contains(.,'SaÃdas') or contains(.,'saÃdas') or contains(.,'SaÃdas'))]",
+      "//*[contains(.,'Entradas') and (contains(.,'Saídas') or contains(.,'Saidas') or contains(.,'SaÃdas') or contains(.,'saÃdas'))]"
     ],
     "BTN_NOVA_CANDIDATES": [
       "//a[contains(@class,'btn') and contains(.,'Nova') and contains(.,'Entrada')]",
@@ -13,18 +27,65 @@
     "RADIO_SAIDA": "/html/body/div[2]/div/div[3]/div/div/form/div[3]/div/div[1]/input",
     "RADIO_ENTRADA": "/html/body/div[2]/div/div[3]/div/div/form/div[3]/div/div[2]/input",
     "FORM_CONTAINER": "/html/body/div[2]/div/div[3]/div/div/form",
+    "RADIO_ENTRADA_CANDIDATES": [
+      "/html/body/div[2]/div/div[3]/div/div/form/div[3]/div/div[2]/input",
+      "//input[@type='radio' and contains(@value,'Entrada')]",
+      "//input[@type='radio' and contains(@value,'entrada')]",
+      "//input[@type='radio' and (contains(@id,'Entrada') or contains(@name,'Entrada'))]",
+      "//input[@type='radio' and (contains(@id,'entrada') or contains(@name,'entrada'))]"
+    ],
+    "RADIO_SAIDA_CANDIDATES": [
+      "/html/body/div[2]/div/div[3]/div/div/form/div[3]/div/div[1]/input",
+      "//input[@type='radio' and (contains(@value,'Saída') or contains(@value,'Saida'))]",
+      "//input[@type='radio' and (contains(@value,'saída') or contains(@value,'saida'))]",
+      "//input[@type='radio' and (contains(@id,'Saída') or contains(@id,'Saida') or contains(@name,'Saída') or contains(@name,'Saida'))]",
+      "//input[@type='radio' and (contains(@id,'saída') or contains(@id,'saida') or contains(@name,'saída') or contains(@name,'saida'))]"
+    ],
     "PLANO_CONTA": "/html/body/div[2]/div/div[3]/div/div/form/div[6]/div/span/span[1]/span/span[1]",
     "CENTRO_CUSTO": "/html/body/div[2]/div/div[3]/div/div/form/div[7]/div/span/span[1]/span",
     "DESCRICAO": "/html/body/div[2]/div/div[3]/div/div/form/div[9]/div/input",
     "VALOR": "/html/body/div[2]/div/div[3]/div/div/form/div[12]/div/input",
     "OBS": "/html/body/div[2]/div/div[3]/div/div/form/div[21]/div/textarea",
+    "PLANO_CONTA_CANDIDATES": [
+      "/html/body/div[2]/div/div[3]/div/div/form/div[6]/div/span/span[1]/span/span[1]",
+      "//form//label[contains(normalize-space(.), 'Plano de Conta')]/following::span[contains(@class,'select2-selection')][1]",
+      "//form//*[contains(normalize-space(.), 'Plano de Conta')]/following::span[contains(@class,'select2-selection')][1]",
+      "(//form//span[contains(@class,'select2-selection')])[1]"
+    ],
+    "CENTRO_CUSTO_CANDIDATES": [
+      "/html/body/div[2]/div/div[3]/div/div/form/div[7]/div/span/span[1]/span",
+      "//form//label[contains(normalize-space(.), 'Centro de Custo')]/following::span[contains(@class,'select2-selection')][1]",
+      "//form//*[contains(normalize-space(.), 'Centro de Custo')]/following::span[contains(@class,'select2-selection')][1]",
+      "(//form//span[contains(@class,'select2-selection')])[2]"
+    ],
+    "DESCRICAO_CANDIDATES": [
+      "/html/body/div[2]/div/div[3]/div/div/form/div[9]/div/input",
+      "//form//label[contains(normalize-space(.), 'Descrição')]/following::input[1]",
+      "//form//label[contains(normalize-space(.), 'Descricao')]/following::input[1]",
+      "//form//*[contains(normalize-space(.), 'Descrição')]/following::input[1]",
+      "//form//*[contains(normalize-space(.), 'Descricao')]/following::input[1]"
+    ],
+    "OBS_CANDIDATES": [
+      "/html/body/div[2]/div/div[3]/div/div/form/div[21]/div/textarea",
+      "//form//label[contains(normalize-space(.), 'Observa')]/following::textarea[1]",
+      "//form//*[contains(normalize-space(.), 'Observa')]/following::textarea[1]",
+      "(//form//textarea)[1]"
+    ],
     "DATA_ENTRADA": "/html/body/div[2]/div/div[3]/div/div/form/div[11]/div/div/input",
     "FORMA_PAGAMENTO_ENTRADA": "/html/body/div[2]/div/div[3]/div/div/form/div[16]/div/span/span[1]/span",
     "CAIXA_ENTRADA_CONTAINER": "/html/body/div[2]/div/div[3]/div/div/form/div[20]/div",
+    "FORMA_PAGAMENTO_ENTRADA_CANDIDATES": [
+      "/html/body/div[2]/div/div[3]/div/div/form/div[16]/div/span/span[1]/span",
+      "//form//label[contains(normalize-space(.), 'Forma de Pagamento')]/following::span[contains(@class,'select2-selection')][1]",
+      "//form//*[contains(normalize-space(.), 'Forma de Pagamento')]/following::span[contains(@class,'select2-selection')][1]",
+      "(//form//span[contains(@class,'select2-selection')])[3]"
+    ],
     "DATA_VENCIMENTO_SAIDA": "/html/body/div[2]/div/div[3]/div/div/form/div[10]/div/div/input",
     "BTN_SALVAR_FORM": "/html/body/div[2]/div/div[3]/div/div/form/div[30]/div/button[1]",
     "BTN_VOLTAR": "/html/body/div[2]/div/div[2]/div/div/form/div[30]/div/button[2]",
+    "FORM_READY_SELECT2": "(//form//span[contains(@class,'select2-selection')])[1]",
     "OK_ALERT": "/html/body/div[5]/div/button[1]",
+    "SWAL_CONTAINER": { "by": "class_name", "value": "swal2-container" },
     "BTN_REALIZAR_PAGAMENTO": "/html/body/ul/li/div/div[2]/button[1]",
     "BTN_INSERIR_PAGAMENTO_SAIDA": "/html/body/div[2]/div/div[2]/div/div/form/div[29]/div/div[2]/a",
     "DATA_PAGAMENTO_MODAL": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[1]/div[1]/div/input",
@@ -52,5 +113,43 @@
       "//*[contains(.,'No matching records') or contains(.,'No data available') or contains(.,'Nothing found')]"
     ],
     "DADOS_DOC_CELL": "/html/body/div[2]/div/div[3]/div/div/table/tbody/tr[1]/td[4]"
+  },
+  "transferencias": {
+    "MENU_CAIXAS_BANCOS_CANDIDATES": [
+      "/html/body/div[2]/div/div[1]/div[2]/div/div/div/div[4]/div/div/span",
+      "//*[self::span or self::a or self::button][contains(.,'Caixas') and contains(.,'Bancos')]",
+      "//*[self::span or self::a or self::button][contains(.,'Caixas') and contains(.,'bancos')]"
+    ],
+    "BTN_NOVA_TRANSFERENCIA_CANDIDATES": [
+      "/html/body/div[2]/div/div[2]/a",
+      "//*[self::a or self::button][contains(.,'Nova') and (contains(.,'Transfer') or contains(.,'transfer'))]"
+    ],
+    "CAIXA_SAIDA": "/html/body/div[2]/div/div[2]/div/div/form/div[2]/div",
+    "VALOR": "/html/body/div[2]/div/div[2]/div/div/form/div[4]/div/input",
+    "CAIXA_ENTRADA": "/html/body/div[2]/div/div[2]/div/div/form/div[5]/div",
+    "DATA": "/html/body/div[2]/div/div[2]/div/div/form/div[8]/div/div/input",
+    "DESCRICAO": "/html/body/div[2]/div/div[2]/div/div/form/div[9]/div/textarea",
+    "BTN_SALVAR": "/html/body/div[2]/div/div[2]/div/div/form/div[10]/div/button[1]",
+    "BTN_VOLTAR": "/html/body/div[2]/div/div[2]/div/div/form/div[10]/div/button[2]",
+    "OK_ALERT": "/html/body/div[5]/div/button[1]",
+    "SWAL_CONTAINER": { "by": "class_name", "value": "swal2-container" },
+    "SELECT2_SEARCH": "/html/body/span/span/span[1]/input"
+  },
+  "caixas_bancos": {
+    "SOMA_BUTTON_CANDIDATES": [
+      { "by": "id", "value": "285" },
+      "//*[@id='285']",
+      "//*[self::a or self::button][contains(.,'SOMA') or contains(.,'Soma')]"
+    ],
+    "MENU_CAIXAS_BANCOS_CANDIDATES": [
+      "/html/body/div[2]/div/div[1]/div[2]/div/div/div/div[1]/div",
+      "//*[self::div or self::span or self::a or self::button][contains(.,'Caixas') and (contains(.,'bancos') or contains(.,'Bancos'))]",
+      "//*[contains(.,'Caixas/bancos') or contains(.,'Caixas/Bancos')]"
+    ],
+    "V_CAIXA_DIARIO": "/html/body/div[2]/div/div[3]/div/div[1]/div/div/div[2]/div[1]/span[2]",
+    "V_CAIXA_BANCO": "/html/body/div[2]/div/div[3]/div/div[2]/div/div/div[2]/div[1]/span[2]",
+    "V_CAIXA_CRIANCAS": "/html/body/div[2]/div/div[3]/div/div[3]/div/div/div[2]/div[1]/span[2]",
+    "V_CAIXA_CAFE": "/html/body/div[2]/div/div[3]/div/div[4]/div/div/div[2]/div[1]",
+    "V_CAIXA_LIVRARIA": "/html/body/div[2]/div/div[3]/div/div[5]/div/div/div[2]/div[1]/span[2]"
   }
 }

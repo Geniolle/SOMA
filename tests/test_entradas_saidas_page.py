@@ -109,12 +109,25 @@ def test_type_and_validate_candidates_raises_when_field_stays_empty(monkeypatch)
 
 def test_page_loads_description_locator_from_external_file(tmp_path):
     locators_path = tmp_path / "locators.json"
+    from soma_app.config.locators import _is_locator, _is_locator_list
+    entradas_saidas_cfg = {}
+    for name, val in vars(EntradasSaidasPage).items():
+        if name.isupper() and name not in {"RADIO_ANY_CANDIDATES", "FORM_READY_CANDIDATES", "ANY_VALUE_CANDIDATES"}:
+            if _is_locator(val):
+                entradas_saidas_cfg[name] = f"//dummy-{name.lower()}"
+            elif _is_locator_list(val):
+                entradas_saidas_cfg[name] = [f"//dummy-{name.lower()}"]
+
+    entradas_saidas_cfg["DESCRICAO"] = "//input[@name='descricao_custom']"
+    entradas_saidas_cfg["DESCRICAO_CANDIDATES"] = [
+        "//input[@name='descricao_custom']",
+        "//dummy-desc-cand-1"
+    ]
+
     locators_path.write_text(
         json.dumps(
             {
-                "entradas_saidas": {
-                    "DESCRICAO": "//input[@name='descricao_custom']"
-                }
+                "entradas_saidas": entradas_saidas_cfg
             }
         ),
         encoding="utf-8",

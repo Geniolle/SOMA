@@ -7,6 +7,7 @@ from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 
 from soma_app.automation.actions import Actions
+from soma_app.config.locators import apply_locator_overrides
 from soma_app.config.settings import Settings
 from soma_app.infra.trace import log_kv, step
 
@@ -18,17 +19,14 @@ class LoginPage:
     SENHA = (By.NAME, "senha")
     SUBMIT = (By.NAME, "submit")
 
-    SOMA_READY = (By.XPATH, '//span[contains(text(),"Entradas/saídas")]')
+    SOMA_READY = (By.XPATH, "")
 
-    SOMA_BUTTON_CANDIDATES = [
-        (By.ID, "285"),
-        (By.XPATH, "//*[@id='285']"),
-        (By.XPATH, "//*[self::a or self::button][contains(.,'SOMA') or contains(.,'Soma')]"),
-    ]
+    SOMA_BUTTON_CANDIDATES = []
 
     def __init__(self, actions: Actions, settings: Settings):
         self.a = actions
         self.settings = settings
+        apply_locator_overrides(self, "login")
 
     def login(self) -> None:
         with step(log, "login.open_portal", url=self.settings.site_login_url):

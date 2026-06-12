@@ -22,179 +22,111 @@ class EntradasSaidasPage:
     # =========
     # MENU / NOVO (robusto por candidatos)
     # =========
-    MENU_ENTRADAS_SAIDAS_CANDIDATES = [
-        (
-            By.XPATH,
-            "//*[self::a or self::button or self::span]"
-            "[contains(.,'Entradas') and "
-            "(contains(.,'Saídas') or contains(.,'Saidas') or contains(.,'SaÃdas') or contains(.,'saÃdas') or contains(.,'SaÃdas'))]",
-        ),
-        (
-            By.XPATH,
-            "//*[contains(.,'Entradas') and "
-            "(contains(.,'Saídas') or contains(.,'Saidas') or contains(.,'SaÃdas') or contains(.,'saÃdas'))]",
-        ),
-    ]
-
-    BTN_NOVA_CANDIDATES = [
-        (By.XPATH, "//a[contains(@class,'btn') and contains(.,'Nova') and contains(.,'Entrada')]"),
-        (By.XPATH, "//button[contains(@class,'btn') and contains(.,'Nova') and contains(.,'Entrada')]"),
-        (By.XPATH, "//*[self::a or self::button][contains(.,'Nova') and contains(.,'Entrada')]"),
-        (By.XPATH, '//a[contains(@class, "btn btn-primary") and contains(., "Nova Entrada/Saída")]'),
-    ]
+    MENU_ENTRADAS_SAIDAS_CANDIDATES = []
+    BTN_NOVA_CANDIDATES = []
 
     # =========
     # RADIO TIPO
     # =========
-    RADIO_SAIDA = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div/form/div[3]/div/div[1]/input")
-    RADIO_ENTRADA = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div/form/div[3]/div/div[2]/input")
+    RADIO_SAIDA = (By.XPATH, "")
+    RADIO_ENTRADA = (By.XPATH, "")
 
-    FORM_CONTAINER = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div/form")
+    FORM_CONTAINER = (By.XPATH, "")
 
-    RADIO_ENTRADA_CANDIDATES = [
-        RADIO_ENTRADA,
-        (By.XPATH, "//input[@type='radio' and contains(@value,'Entrada')]"),
-        (By.XPATH, "//input[@type='radio' and contains(@value,'entrada')]"),
-        (By.XPATH, "//input[@type='radio' and (contains(@id,'Entrada') or contains(@name,'Entrada'))]"),
-        (By.XPATH, "//input[@type='radio' and (contains(@id,'entrada') or contains(@name,'entrada'))]"),
-    ]
-
-    RADIO_SAIDA_CANDIDATES = [
-        RADIO_SAIDA,
-        (By.XPATH, "//input[@type='radio' and (contains(@value,'Saída') or contains(@value,'Saida'))]"),
-        (By.XPATH, "//input[@type='radio' and (contains(@value,'saída') or contains(@value,'saida'))]"),
-        (
-            By.XPATH,
-            "//input[@type='radio' and (contains(@id,'Saída') or contains(@id,'Saida') or contains(@name,'Saída') or contains(@name,'Saida'))]",
-        ),
-        (
-            By.XPATH,
-            "//input[@type='radio' and (contains(@id,'saída') or contains(@id,'saida') or contains(@name,'saída') or contains(@name,'saida'))]",
-        ),
-    ]
-
-    RADIO_ANY_CANDIDATES = RADIO_SAIDA_CANDIDATES + RADIO_ENTRADA_CANDIDATES
+    RADIO_ENTRADA_CANDIDATES = []
+    RADIO_SAIDA_CANDIDATES = []
+    RADIO_ANY_CANDIDATES = []
 
     # =========
     # CAMPOS COMUNS
     # =========
-    PLANO_CONTA = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div/form/div[6]/div/span/span[1]/span/span[1]")
-    CENTRO_CUSTO = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div/form/div[7]/div/span/span[1]/span")
-    DESCRICAO = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div/form/div[9]/div/input")
-    VALOR = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div/form/div[12]/div/input")
-    OBS = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div/form/div[21]/div/textarea")
+    PLANO_CONTA = (By.XPATH, "")
+    CENTRO_CUSTO = (By.XPATH, "")
+    DESCRICAO = (By.XPATH, "")
+    VALOR = (By.XPATH, "")
+    OBS = (By.XPATH, "")
 
-    PLANO_CONTA_CANDIDATES = [
-        PLANO_CONTA,
-        (By.XPATH, "//form//label[contains(normalize-space(.), 'Plano de Conta')]/following::span[contains(@class,'select2-selection')][1]"),
-        (By.XPATH, "//form//*[contains(normalize-space(.), 'Plano de Conta')]/following::span[contains(@class,'select2-selection')][1]"),
-        (By.XPATH, "(//form//span[contains(@class,'select2-selection')])[1]"),
-    ]
-    CENTRO_CUSTO_CANDIDATES = [
-        CENTRO_CUSTO,
-        (By.XPATH, "//form//label[contains(normalize-space(.), 'Centro de Custo')]/following::span[contains(@class,'select2-selection')][1]"),
-        (By.XPATH, "//form//*[contains(normalize-space(.), 'Centro de Custo')]/following::span[contains(@class,'select2-selection')][1]"),
-        (By.XPATH, "(//form//span[contains(@class,'select2-selection')])[2]"),
-    ]
-    DESCRICAO_CANDIDATES = [
-        DESCRICAO,
-        (By.XPATH, "//form//label[contains(normalize-space(.), 'Descrição')]/following::input[1]"),
-        (By.XPATH, "//form//label[contains(normalize-space(.), 'Descricao')]/following::input[1]"),
-        (By.XPATH, "//form//*[contains(normalize-space(.), 'Descrição')]/following::input[1]"),
-        (By.XPATH, "//form//*[contains(normalize-space(.), 'Descricao')]/following::input[1]"),
-    ]
-    OBS_CANDIDATES = [
-        OBS,
-        (By.XPATH, "//form//label[contains(normalize-space(.), 'Observa')]/following::textarea[1]"),
-        (By.XPATH, "//form//*[contains(normalize-space(.), 'Observa')]/following::textarea[1]"),
-        (By.XPATH, "(//form//textarea)[1]"),
-    ]
+    PLANO_CONTA_CANDIDATES = []
+    CENTRO_CUSTO_CANDIDATES = []
+    DESCRICAO_CANDIDATES = []
+    OBS_CANDIDATES = []
 
     # =========
     # CAMPOS ENTRADA
     # =========
-    DATA_ENTRADA = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div/form/div[11]/div/div/input")
-    FORMA_PAGAMENTO_ENTRADA = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div/form/div[16]/div/span/span[1]/span")
-    CAIXA_ENTRADA_CONTAINER = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div/form/div[20]/div")
+    DATA_ENTRADA = (By.XPATH, "")
+    FORMA_PAGAMENTO_ENTRADA = (By.XPATH, "")
+    CAIXA_ENTRADA_CONTAINER = (By.XPATH, "")
 
-    FORMA_PAGAMENTO_ENTRADA_CANDIDATES = [
-        FORMA_PAGAMENTO_ENTRADA,
-        (By.XPATH, "//form//label[contains(normalize-space(.), 'Forma de Pagamento')]/following::span[contains(@class,'select2-selection')][1]"),
-        (By.XPATH, "//form//*[contains(normalize-space(.), 'Forma de Pagamento')]/following::span[contains(@class,'select2-selection')][1]"),
-        (By.XPATH, "(//form//span[contains(@class,'select2-selection')])[3]"),
-    ]
+    FORMA_PAGAMENTO_ENTRADA_CANDIDATES = []
 
     # =========
     # CAMPOS SAÍDA
     # =========
-    DATA_VENCIMENTO_SAIDA = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div/form/div[10]/div/div/input")
+    DATA_VENCIMENTO_SAIDA = (By.XPATH, "")
 
     # =========
     # BOTÕES (form)
     # =========
-    BTN_SALVAR_FORM = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div/form/div[30]/div/button[1]")
-    BTN_VOLTAR = (By.XPATH, "/html/body/div[2]/div/div[2]/div/div/form/div[30]/div/button[2]")
+    BTN_SALVAR_FORM = (By.XPATH, "")
+    BTN_VOLTAR = (By.XPATH, "")
 
-    FORM_READY_CANDIDATES = [
-        FORM_CONTAINER,
-        DESCRICAO,
-        BTN_SALVAR_FORM,
-        (By.XPATH, "(//form//span[contains(@class,'select2-selection')])[1]"),
-    ]
+    FORM_READY_SELECT2 = (By.XPATH, "")
+    FORM_READY_CANDIDATES = []
 
     # =========
     # ALERTAS / OVERLAY
     # =========
-    OK_ALERT = (By.XPATH, "/html/body/div[5]/div/button[1]")
+    OK_ALERT = (By.XPATH, "")
     SWAL_CONTAINER = (By.CLASS_NAME, "swal2-container")
 
     # =========
     # PAGAMENTO / BAIXA
     # =========
-    BTN_REALIZAR_PAGAMENTO = (By.XPATH, "/html/body/ul/li/div/div[2]/button[1]")
+    BTN_REALIZAR_PAGAMENTO = (By.XPATH, "")
 
-    BTN_INSERIR_PAGAMENTO_SAIDA = (By.XPATH, "/html/body/div[2]/div/div[2]/div/div/form/div[29]/div/div[2]/a")
-    DATA_PAGAMENTO_MODAL = (By.XPATH, "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[1]/div[1]/div/input")
-    FORMA_PAGAMENTO_MODAL = (By.XPATH, "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]/div[1]/div/select")
-    CAIXA_PAGAMENTO_MODAL = (By.XPATH, "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[4]/div[2]/div/select")
-    NUM_DOCUMENTO_MODAL = (By.XPATH, "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]/div[3]/div/input")
-    BTN_SALVAR_PAGAMENTO_MODAL = (By.XPATH, "/html/body/div[2]/div/div[5]/div/div/form/div[3]/button")
+    BTN_INSERIR_PAGAMENTO_SAIDA = (By.XPATH, "")
+    DATA_PAGAMENTO_MODAL = (By.XPATH, "")
+    FORMA_PAGAMENTO_MODAL = (By.XPATH, "")
+    CAIXA_PAGAMENTO_MODAL = (By.XPATH, "")
+    NUM_DOCUMENTO_MODAL = (By.XPATH, "")
+    BTN_SALVAR_PAGAMENTO_MODAL = (By.XPATH, "")
 
-    BTN_INSERIR_BAIXA = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div/table/tbody/tr[1]/td[6]/button")
-    DATA_BAIXA = (By.XPATH, "/html/body/div[2]/div/div[4]/div/div/form/div[2]/div/div/div[1]/div/div/input")
-    POPUP_CLICK_CANDIDATES = [
-        (By.XPATH, "/html/body/div[2]/div/div[4]/div/div/form/div[2]/div/div/div[2]"),
-        (By.XPATH, "/html/body/div[2]/div/div[4]/div/div/form/div[3]"),
-    ]
-    BTN_SALVAR_BAIXA = (By.XPATH, "/html/body/div[2]/div/div[4]/div/div/form/div[3]/button")
+    BTN_INSERIR_BAIXA = (By.XPATH, "")
+    DATA_BAIXA = (By.XPATH, "")
+    POPUP_CLICK_CANDIDATES = []
+    BTN_SALVAR_BAIXA = (By.XPATH, "")
 
     # =========
     # PESQUISA DOC SOMA
     # =========
-    PESQ_DESCRICAO = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div/form/div[3]/div/input")
-    RADIO_PERIODO = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div/form/div[7]/div/div/input")
-    RADIO_DATA_PAGAMENTO = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div/form/div[8]/div/div[2]/input")
-    DATA_INI = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div/form/div[9]/div/div[1]/div/input")
-    DATA_FIM = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div/form/div[9]/div/div[3]/div/input")
-    BTN_PESQUISAR = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div/form/div[10]/div/button")
-    RESULT_DOC = (By.XPATH, "/html/body/div[2]/div/div[4]/div/div/div/div/table/tbody/tr/td[3]")
+    PESQ_DESCRICAO = (By.XPATH, "")
+    RADIO_PERIODO = (By.XPATH, "")
+    RADIO_DATA_PAGAMENTO = (By.XPATH, "")
+    DATA_INI = (By.XPATH, "")
+    DATA_FIM = (By.XPATH, "")
+    BTN_PESQUISAR = (By.XPATH, "")
+    RESULT_DOC = (By.XPATH, "")
 
-    NO_RESULTS_CANDIDATES = [
-        (By.XPATH, "//*[@class='dataTables_empty']"),
-        (By.XPATH, "//*[contains(.,'Nenhum registo') or contains(.,'Nenhum registro') or contains(.,'Sem resultados')]"),
-        (By.XPATH, "//*[contains(.,'No matching records') or contains(.,'No data available') or contains(.,'Nothing found')]"),
-    ]
+    NO_RESULTS_CANDIDATES = []
 
     # =========
     # DADOS DOC
     # =========
-    DADOS_DOC_CELL = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div/table/tbody/tr[1]/td[4]")
+    DADOS_DOC_CELL = (By.XPATH, "")
 
     def __init__(self, actions: Actions, settings: Any):
         self.a = actions
         self.settings = settings
         self.base_ivv = (getattr(settings, "site_home_url", "") or "https://verbodavida.info/IVV/").rstrip("/") + "/"
         apply_locator_overrides(self, "entradas_saidas")
+        self.RADIO_ANY_CANDIDATES = self.RADIO_SAIDA_CANDIDATES + self.RADIO_ENTRADA_CANDIDATES
+        self.FORM_READY_CANDIDATES = [
+            self.FORM_CONTAINER,
+            self.DESCRICAO,
+            self.BTN_SALVAR_FORM,
+            self.FORM_READY_SELECT2,
+        ]
 
         self.strict_caixa = bool(getattr(settings, "STRICT_CAIXA_MATCH", True))
 

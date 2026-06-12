@@ -8,6 +8,7 @@ from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 
 from soma_app.automation.actions import Actions
+from soma_app.config.locators import apply_locator_overrides
 from soma_app.infra.trace import log_kv, step
 
 log = logging.getLogger("soma_app.pages.caixas_bancos")
@@ -25,40 +26,34 @@ class CaixasBancosPage:
     """
 
     # --------- Portal / SOMA (para reset quando a UI estiver em estado estranho)
-    SOMA_BUTTON_CANDIDATES: List[Locator] = [
-        (By.ID, "285"),
-        (By.XPATH, "//*[@id='285']"),
-        (By.XPATH, "//*[self::a or self::button][contains(.,'SOMA') or contains(.,'Soma')]"),
-    ]
+    SOMA_BUTTON_CANDIDATES: List[Locator] = []
 
     # --------- Menu Caixas/Bancos (xpath do SYS_CAIXA.py em primeiro)
-    MENU_CAIXAS_BANCOS_CANDIDATES: List[Locator] = [
-        (By.XPATH, "/html/body/div[2]/div/div[1]/div[2]/div/div/div/div[1]/div"),
-        (By.XPATH, "//*[self::div or self::span or self::a or self::button][contains(.,'Caixas') and (contains(.,'bancos') or contains(.,'Bancos'))]"),
-        (By.XPATH, "//*[contains(.,'Caixas/bancos') or contains(.,'Caixas/Bancos')]"),
-    ]
+    MENU_CAIXAS_BANCOS_CANDIDATES: List[Locator] = []
 
     # --------- Valores (xpaths do SYS_CAIXA.py)
-    V_CAIXA_DIARIO = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div[1]/div/div/div[2]/div[1]/span[2]")
-    V_CAIXA_BANCO = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div[2]/div/div/div[2]/div[1]/span[2]")
-    V_CAIXA_CRIANCAS = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div[3]/div/div/div[2]/div[1]/span[2]")
-    V_CAIXA_CAFE = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div[4]/div/div/div[2]/div[1]")
-    V_CAIXA_LIVRARIA = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div[5]/div/div/div[2]/div[1]/span[2]")
+    V_CAIXA_DIARIO = (By.XPATH, "")
+    V_CAIXA_BANCO = (By.XPATH, "")
+    V_CAIXA_CRIANCAS = (By.XPATH, "")
+    V_CAIXA_CAFE = (By.XPATH, "")
+    V_CAIXA_LIVRARIA = (By.XPATH, "")
 
     # Candidatos "qualquer valor apareceu?"
-    ANY_VALUE_CANDIDATES: List[Locator] = [
-        V_CAIXA_DIARIO,
-        V_CAIXA_BANCO,
-        V_CAIXA_CRIANCAS,
-        V_CAIXA_CAFE,
-        V_CAIXA_LIVRARIA,
-    ]
+    ANY_VALUE_CANDIDATES: List[Locator] = []
 
     def __init__(self, actions: Actions, settings: Any):
         self.a = actions
         self.settings = settings
         self.timeout = int(getattr(settings, "timeout_seconds", 20) or 20)
         self.site_login_url = (getattr(settings, "site_login_url", "") or "https://verbodavida.info/apps/index.php").strip()
+        apply_locator_overrides(self, "caixas_bancos")
+        self.ANY_VALUE_CANDIDATES = [
+            self.V_CAIXA_DIARIO,
+            self.V_CAIXA_BANCO,
+            self.V_CAIXA_CRIANCAS,
+            self.V_CAIXA_CAFE,
+            self.V_CAIXA_LIVRARIA,
+        ]
 
     # -------------------------
     # helpers

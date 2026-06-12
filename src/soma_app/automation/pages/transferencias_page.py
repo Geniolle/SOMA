@@ -10,6 +10,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 from soma_app.automation.actions import Actions
+from soma_app.config.locators import apply_locator_overrides
 from soma_app.domain.models import ContaOrdemRow
 from soma_app.infra.trace import log_kv, step
 
@@ -28,38 +29,32 @@ class TransferenciasPage:
     """
 
     # Menu Caixas/Bancos (do SOMA.py)
-    MENU_CAIXAS_BANCOS_CANDIDATES: List[Locator] = [
-        (By.XPATH, "/html/body/div[2]/div/div[1]/div[2]/div/div/div/div[4]/div/div/span"),
-        (By.XPATH, "//*[self::span or self::a or self::button][contains(.,'Caixas') and contains(.,'Bancos')]"),
-        (By.XPATH, "//*[self::span or self::a or self::button][contains(.,'Caixas') and contains(.,'bancos')]"),
-    ]
+    MENU_CAIXAS_BANCOS_CANDIDATES: List[Locator] = []
 
     # Botão Nova Transferência (do SOMA.py)
-    BTN_NOVA_TRANSFERENCIA_CANDIDATES: List[Locator] = [
-        (By.XPATH, "/html/body/div[2]/div/div[2]/a"),
-        (By.XPATH, "//*[self::a or self::button][contains(.,'Nova') and (contains(.,'Transfer') or contains(.,'transfer'))]"),
-    ]
+    BTN_NOVA_TRANSFERENCIA_CANDIDATES: List[Locator] = []
 
     # Campos Transferência (do SOMA.py)
-    CAIXA_SAIDA = (By.XPATH, "/html/body/div[2]/div/div[2]/div/div/form/div[2]/div")
-    VALOR = (By.XPATH, "/html/body/div[2]/div/div[2]/div/div/form/div[4]/div/input")
-    CAIXA_ENTRADA = (By.XPATH, "/html/body/div[2]/div/div[2]/div/div/form/div[5]/div")
-    DATA = (By.XPATH, "/html/body/div[2]/div/div[2]/div/div/form/div[8]/div/div/input")
-    DESCRICAO = (By.XPATH, "/html/body/div[2]/div/div[2]/div/div/form/div[9]/div/textarea")
+    CAIXA_SAIDA = (By.XPATH, "")
+    VALOR = (By.XPATH, "")
+    CAIXA_ENTRADA = (By.XPATH, "")
+    DATA = (By.XPATH, "")
+    DESCRICAO = (By.XPATH, "")
 
-    BTN_SALVAR = (By.XPATH, "/html/body/div[2]/div/div[2]/div/div/form/div[10]/div/button[1]")
-    BTN_VOLTAR = (By.XPATH, "/html/body/div[2]/div/div[2]/div/div/form/div[10]/div/button[2]")
+    BTN_SALVAR = (By.XPATH, "")
+    BTN_VOLTAR = (By.XPATH, "")
 
-    OK_ALERT = (By.XPATH, "/html/body/div[5]/div/button[1]")
+    OK_ALERT = (By.XPATH, "")
     SWAL_CONTAINER = (By.CLASS_NAME, "swal2-container")
 
-    SELECT2_SEARCH = (By.XPATH, "/html/body/span/span/span[1]/input")
+    SELECT2_SEARCH = (By.XPATH, "")
 
     def __init__(self, actions: Actions, settings: Any):
         self.a = actions
         self.settings = settings
         self.home_url = (getattr(settings, "site_home_url", "") or "https://verbodavida.info/IVV/").strip()
         self.timeout = int(getattr(settings, "timeout_seconds", 20) or 20)
+        apply_locator_overrides(self, "transferencias")
 
     def _dismiss_alerts(self) -> None:
         try:

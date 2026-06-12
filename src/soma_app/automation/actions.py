@@ -145,8 +145,17 @@ class Actions:
         self,
         opener: Locator,
         value: str,
-        search_input: Locator = (By.XPATH, "/html/body/span/span/span[1]/input"),
+        search_input: Optional[Locator] = None,
     ) -> None:
+        if search_input is None:
+            from soma_app.config.locators import _coerce_locator, load_page_locator_config
+            common_cfg = load_page_locator_config(None, "common")
+            raw_search = common_cfg.get("SELECT2_SEARCH")
+            if not raw_search:
+                raise ValueError("O locator 'SELECT2_SEARCH' não está configurado na secção 'common' do JSON.")
+            search_input = _coerce_locator(raw_search, None)
+            if not search_input:
+                raise ValueError("O locator 'SELECT2_SEARCH' na secção 'common' do JSON é inválido.")
         """
         Select2 robusto:
         - Primeiro tenta input de pesquisa.
