@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import gspread
@@ -44,13 +45,14 @@ def _first_value(*vals: Any) -> Optional[Any]:
 
 
 def _resolve_credentials_path(settings: Any) -> str:
+    project_root = Path(__file__).resolve().parents[3]
+
     env_path = _first_value(
         os.getenv("GOOGLE_CREDENTIALS_PATH"),
         os.getenv("GOOGLE_APPLICATION_CREDENTIALS"),
     )
 
     cand = _first_value(
-        env_path,
         _get_attr(settings, "google_credentials_path"),
         _get_attr(settings, "GOOGLE_CREDENTIALS_PATH"),
         _get_attr(settings, "credentials_path"),
@@ -58,6 +60,7 @@ def _resolve_credentials_path(settings: Any) -> str:
         _get_attr(settings, "service_account_file"),
         _get_attr(settings, "SERVICE_ACCOUNT_FILE"),
         _get_attr(settings, "gspread_credentials_path"),
+        env_path,
     )
 
     path = _norm(cand) if cand else ""
@@ -70,21 +73,27 @@ def _resolve_credentials_path(settings: Any) -> str:
     path = os.path.expandvars(path)
     path = os.path.expanduser(path)
 
-    # relativo -> absoluto
-    if not os.path.isabs(path):
-        path = os.path.abspath(path)
+    p = Path(path)
+    if p.is_absolute():
+        if p.exists():
+            return str(p)
+        raise FileNotFoundError(f"Ficheiro de credenciais não encontrado: {p}")
 
-    # fallback: se o path não existe mas o ficheiro existe na raiz do projeto (cwd)
-    if not os.path.exists(path):
-        base = os.path.basename(path)
-        alt = os.path.abspath(os.path.join(os.getcwd(), base))
-        if os.path.exists(alt):
-            path = alt
+    # relativo: tenta cwd, depois raiz do projeto
+    cwd_candidate = Path.cwd() / p
+    if cwd_candidate.exists():
+        return str(cwd_candidate.resolve())
 
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"Ficheiro de credenciais não encontrado: {path}")
+    project_candidate = project_root / p
+    if project_candidate.exists():
+        return str(project_candidate.resolve())
 
-    return path
+    # fallback por basename
+    by_name_candidate = project_root / p.name
+    if by_name_candidate.exists():
+        return str(by_name_candidate.resolve())
+
+    raise FileNotFoundError(f"Ficheiro de credenciais não encontrado: {project_candidate}")
 
 
 def _extract_sheet_id_from_url(url: str) -> Optional[str]:

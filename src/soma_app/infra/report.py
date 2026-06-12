@@ -19,6 +19,8 @@ _state: Dict[str, Any] = {
     "sheet": None,        # nome da sheet (se aparecer nos fields)
     "current_row": None,  # linha atual (se aparecer)
     "current_tipo": None, # tipo atual (Entrada/Saída)
+    "current_progress": None,  # progresso atual do lote
+    "current_total": None,     # total do lote atual
 }
 
 
@@ -27,7 +29,7 @@ def _w() -> int:
 
 
 def _line(ch: str = "=", n: Optional[int] = None) -> str:
-    return (ch * (n or _w()))
+    return ch * (n or _w())
 
 
 def _report(msg: str = "") -> None:
@@ -68,6 +70,26 @@ def info(msg: str) -> None:
     _report(msg)
 
 
+def preprocess_summary(available_docs: int, selected_docs: int) -> None:
+    if not _ENABLED:
+        return
+
+    if available_docs <= 0:
+        info("Validacao DOC.SOMA: nenhum documento disponivel para lancamento.")
+        info("")
+        return
+
+    doc_label = "documento" if available_docs == 1 else "documentos"
+    if selected_docs != available_docs:
+        info(
+            f"Validacao DOC.SOMA: {available_docs} {doc_label} disponiveis para lancamento; "
+            f"{selected_docs} selecionados neste lote."
+        )
+    else:
+        info(f"Validacao DOC.SOMA: {available_docs} {doc_label} disponiveis para lancamento.")
+    info("")
+
+
 def warn(msg: str) -> None:
     _report(f"Aviso: {msg}")
 
@@ -81,6 +103,14 @@ def _get_field(fields: Dict[str, Any], *names: str) -> Optional[Any]:
         if n in fields and fields.get(n) not in (None, ""):
             return fields.get(n)
     return None
+
+
+def _progress_suffix() -> str:
+    current = _state.get("current_progress")
+    total = _state.get("current_total")
+    if current is None or total is None:
+        return ""
+    return f" ({current}/{total})"
 
 
 def on_step_start(step_name: str, fields: Dict[str, Any]) -> None:
@@ -102,6 +132,14 @@ def on_step_start(step_name: str, fields: Dict[str, Any]) -> None:
     tipo = _get_field(fields, "tipo", "type")
     if tipo:
         _state["current_tipo"] = tipo
+
+    progress_current = _get_field(fields, "progress_current", "current_progress")
+    if progress_current is not None:
+        _state["current_progress"] = progress_current
+
+    progress_total = _get_field(fields, "progress_total", "current_total")
+    if progress_total is not None:
+        _state["current_total"] = progress_total
 
     # Secções principais (1)(2)(3)(4)(6)
     if step_name == "run.init":
@@ -129,7 +167,7 @@ def on_step_start(step_name: str, fields: Dict[str, Any]) -> None:
     if step_name == "entradas_saidas.fill_form":
         r = _state.get("current_row")
         t = _state.get("current_tipo") or _get_field(fields, "tipo") or "-"
-        subsection("4.1", f"Iniciando o processo de input de dados para a linha {r} e o tipo {t}")
+        subsection("4.1", f"Iniciando o processo de input de dados para a linha {r} e o tipo {t}{_progress_suffix()}")
         return
 
     if step_name in {"entradas_saidas.save_entrada", "entradas_saidas.entrada_transfer_bancaria"}:
@@ -174,43 +212,6 @@ def on_step_ok(step_name: str, fields: Dict[str, Any], dt_ms: int) -> None:
             info("Botão 'SOMA' clicado com sucesso!")
         else:
             info("Página carregada com sucesso após clicar no botão 'SOMA'.")
-        return
-
-    # Entradas/Saídas – mensagens “humanas”
-    if step_name == "entradas_saidas.open_menu":
-        info("Clicou na opção 'Entradas/Saídas' com sucesso!")
-        return
-
-    if step_name == "entradas_saidas.open_new_form":
-        info("Clicou no botão 'Nova Entrada/Saída' com sucesso!")
-        return
-
-    if step_name == "entradas_saidas.choose_tipo":
-        tipo = _state.get("current_tipo") or _get_field(fields, "tipo") or "-"
-        info(f"Selecionado o botão para o processo de '{tipo}'")
-        info("")
-        return
-
-    if step_name == "entradas_saidas.fill_form":
-        info("Campos principais preenchidos com sucesso")
-        return
-
-    if step_name == "entradas_saidas.save_entrada":
-        info("Documento salvo com sucesso!")
-        return
-
-    if step_name == "entradas_saidas.entrada_transfer_bancaria":
-        info("Inserir pagamento salvo com sucesso!")
-        return
-
-    if step_name == "entradas_saidas.baixa":
-        info("Baixa realizada com sucesso!")
-        return
-
-    if step_name == "entradas_saidas.search_doc":
-        doc = _get_field(fields, "doc", "doc_id")
-        if doc:
-            info(f"Número do documento extraído: {doc}")
         return
 
 

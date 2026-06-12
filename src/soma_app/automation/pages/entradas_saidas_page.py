@@ -11,6 +11,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import Select
 
 from soma_app.automation.actions import Actions
+from soma_app.config.locators import apply_locator_overrides
 from soma_app.domain.models import ContaOrdemRow, TipoMovimento
 from soma_app.infra.trace import log_kv, step
 
@@ -83,12 +84,45 @@ class EntradasSaidasPage:
     VALOR = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div/form/div[12]/div/input")
     OBS = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div/form/div[21]/div/textarea")
 
+    PLANO_CONTA_CANDIDATES = [
+        PLANO_CONTA,
+        (By.XPATH, "//form//label[contains(normalize-space(.), 'Plano de Conta')]/following::span[contains(@class,'select2-selection')][1]"),
+        (By.XPATH, "//form//*[contains(normalize-space(.), 'Plano de Conta')]/following::span[contains(@class,'select2-selection')][1]"),
+        (By.XPATH, "(//form//span[contains(@class,'select2-selection')])[1]"),
+    ]
+    CENTRO_CUSTO_CANDIDATES = [
+        CENTRO_CUSTO,
+        (By.XPATH, "//form//label[contains(normalize-space(.), 'Centro de Custo')]/following::span[contains(@class,'select2-selection')][1]"),
+        (By.XPATH, "//form//*[contains(normalize-space(.), 'Centro de Custo')]/following::span[contains(@class,'select2-selection')][1]"),
+        (By.XPATH, "(//form//span[contains(@class,'select2-selection')])[2]"),
+    ]
+    DESCRICAO_CANDIDATES = [
+        DESCRICAO,
+        (By.XPATH, "//form//label[contains(normalize-space(.), 'Descrição')]/following::input[1]"),
+        (By.XPATH, "//form//label[contains(normalize-space(.), 'Descricao')]/following::input[1]"),
+        (By.XPATH, "//form//*[contains(normalize-space(.), 'Descrição')]/following::input[1]"),
+        (By.XPATH, "//form//*[contains(normalize-space(.), 'Descricao')]/following::input[1]"),
+    ]
+    OBS_CANDIDATES = [
+        OBS,
+        (By.XPATH, "//form//label[contains(normalize-space(.), 'Observa')]/following::textarea[1]"),
+        (By.XPATH, "//form//*[contains(normalize-space(.), 'Observa')]/following::textarea[1]"),
+        (By.XPATH, "(//form//textarea)[1]"),
+    ]
+
     # =========
     # CAMPOS ENTRADA
     # =========
     DATA_ENTRADA = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div/form/div[11]/div/div/input")
     FORMA_PAGAMENTO_ENTRADA = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div/form/div[16]/div/span/span[1]/span")
     CAIXA_ENTRADA_CONTAINER = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div/form/div[20]/div")
+
+    FORMA_PAGAMENTO_ENTRADA_CANDIDATES = [
+        FORMA_PAGAMENTO_ENTRADA,
+        (By.XPATH, "//form//label[contains(normalize-space(.), 'Forma de Pagamento')]/following::span[contains(@class,'select2-selection')][1]"),
+        (By.XPATH, "//form//*[contains(normalize-space(.), 'Forma de Pagamento')]/following::span[contains(@class,'select2-selection')][1]"),
+        (By.XPATH, "(//form//span[contains(@class,'select2-selection')])[3]"),
+    ]
 
     # =========
     # CAMPOS SAÍDA
@@ -103,9 +137,9 @@ class EntradasSaidasPage:
 
     FORM_READY_CANDIDATES = [
         FORM_CONTAINER,
-        PLANO_CONTA,
         DESCRICAO,
         BTN_SALVAR_FORM,
+        (By.XPATH, "(//form//span[contains(@class,'select2-selection')])[1]"),
     ]
 
     # =========
@@ -160,6 +194,7 @@ class EntradasSaidasPage:
         self.a = actions
         self.settings = settings
         self.base_ivv = (getattr(settings, "site_home_url", "") or "https://verbodavida.info/IVV/").rstrip("/") + "/"
+        apply_locator_overrides(self, "entradas_saidas")
 
         self.strict_caixa = bool(getattr(settings, "STRICT_CAIXA_MATCH", True))
 
@@ -206,6 +241,17 @@ class EntradasSaidasPage:
         except Exception:
             return ""
 
+    @staticmethod
+    def _unique_locators(locators: Iterable[Tuple[str, str]]) -> List[Tuple[str, str]]:
+        seen: set[Tuple[str, str]] = set()
+        out: List[Tuple[str, str]] = []
+        for loc in locators:
+            if loc in seen:
+                continue
+            seen.add(loc)
+            out.append(loc)
+        return out
+
     def _select_first_text(self, select_el) -> str:
         try:
             return (Select(select_el).first_selected_option.text or "").strip()
@@ -218,6 +264,89 @@ class EntradasSaidasPage:
         if not d or not a:
             return False
         return d == a or (d in a) or (a in d)
+
+    def _select2_choose_candidates(
+        self,
+        locators: Iterable[Tuple[str, str]],
+        value: str,
+        *,
+        row: ContaOrdemRow,
+        field: str,
+        wait_seconds: int = 20,
+    ) -> None:
+        unique = self._unique_locators(locators)
+        last_error: Exception | None = None
+
+        try:
+            self.a.wait_any_present(unique, timeout_seconds=wait_seconds)
+        except Exception as e:
+            p = self.a.screenshot(f"entradas_saidas_{field.lower()}_opener_missing_row_{row.row_number}")
+            raise TimeoutException(
+                f"{field}: opener do Select2 não apareceu | value='{self._safe(value)}' | screenshot={p}"
+            ) from e
+
+        for loc in unique:
+            if not self.a.exists(loc, timeout_seconds=2):
+                continue
+            try:
+                self.a.select2_choose(loc, value)
+                return
+            except Exception as e:
+                last_error = e
+
+        p = self.a.screenshot(f"entradas_saidas_{field.lower()}_select2_fail_row_{row.row_number}")
+        raise RuntimeError(
+            f"{field}: não consegui selecionar '{self._safe(value)}' no Select2. "
+            f"last_err={last_error} | screenshot={p}"
+        )
+
+    def _type_and_validate_candidates(
+        self,
+        locators: Iterable[Tuple[str, str]],
+        value: str,
+        *,
+        row: ContaOrdemRow,
+        field: str,
+        clear: bool = True,
+        click_first: bool = False,
+        wait_seconds: int = 20,
+    ) -> str:
+        unique = self._unique_locators(locators)
+        last_error: Exception | None = None
+        last_seen = ""
+
+        try:
+            self.a.wait_any_present(unique, timeout_seconds=wait_seconds)
+        except Exception as e:
+            p = self.a.screenshot(f"entradas_saidas_{field.lower()}_missing_row_{row.row_number}")
+            raise TimeoutException(
+                f"{field}: campo não apareceu | value='{self._safe(value)}' | screenshot={p}"
+            ) from e
+
+        for loc in unique:
+            if not self.a.exists(loc, timeout_seconds=2):
+                continue
+            for _ in range(2):
+                try:
+                    if click_first:
+                        try:
+                            self.a.click_js(loc)
+                        except Exception:
+                            pass
+                    self.a.type(loc, value, clear=clear)
+                    last_seen = self._input_value(loc)
+                    if self._match_ok(value, last_seen):
+                        return last_seen
+                    time.sleep(0.2)
+                except Exception as e:
+                    last_error = e
+                    break
+
+        p = self.a.screenshot(f"entradas_saidas_{field.lower()}_fill_fail_row_{row.row_number}")
+        raise RuntimeError(
+            f"{field}: campo não confirmou preenchimento. esperado='{self._safe(value)}' | "
+            f"atual='{self._safe(last_seen)}' | screenshot={p} | last_err={last_error}"
+        )
 
     def _wait_select_ready(self, resolve_select: Callable[[], Any], timeout_seconds: int = 10, min_options: int = 2) -> None:
         t0 = time.time()
@@ -474,6 +603,7 @@ class EntradasSaidasPage:
                 loc = self.a.wait_any_present(self.RADIO_ENTRADA_CANDIDATES, timeout_seconds=30)
                 self.a.click_js(loc)
                 self._emit("Selecionado o botão para o processo de 'Entrada'")
+            self.a.wait_any_present(self.FORM_READY_CANDIDATES, timeout_seconds=30)
             time.sleep(1)
 
     # -----------------------
@@ -481,16 +611,31 @@ class EntradasSaidasPage:
     # -----------------------
     def _fill_common(self, row: ContaOrdemRow) -> None:
         with step(log, "entradas_saidas.fill.plano_conta", row=row.row_number, tipo=row.tipo.value, field="PLANO_CONTA"):
-            self.a.select2_choose(self.PLANO_CONTA, row.plano_conta)
+            self._select2_choose_candidates(
+                self.PLANO_CONTA_CANDIDATES,
+                row.plano_conta,
+                row=row,
+                field="plano_conta",
+            )
             self._emit(f"Plano de conta preenchido com sucesso: {row.plano_conta}", row=row.row_number, tipo=row.tipo.value)
 
         with step(log, "entradas_saidas.fill.centro_custo", row=row.row_number, tipo=row.tipo.value, field="CENTRO_CUSTO"):
-            self.a.select2_choose(self.CENTRO_CUSTO, row.centro_custo)
+            self._select2_choose_candidates(
+                self.CENTRO_CUSTO_CANDIDATES,
+                row.centro_custo,
+                row=row,
+                field="centro_custo",
+            )
             self._emit(f"Centro de custo preenchido com sucesso: {row.centro_custo}", row=row.row_number, tipo=row.tipo.value)
 
         with step(log, "entradas_saidas.fill.descricao", row=row.row_number, tipo=row.tipo.value, field="DESCRICAO"):
-            self.a.type(self.DESCRICAO, row.descricao_soma, clear=False)
-            v = self._input_value(self.DESCRICAO) or row.descricao_soma
+            v = self._type_and_validate_candidates(
+                self.DESCRICAO_CANDIDATES,
+                row.descricao_soma,
+                row=row,
+                field="descricao",
+                clear=True,
+            )
             self._emit(f"Descrição preenchida com sucesso: {v}", row=row.row_number, tipo=row.tipo.value)
 
         with step(log, "entradas_saidas.fill.valor", row=row.row_number, tipo=row.tipo.value, field="VALOR"):
@@ -503,9 +648,14 @@ class EntradasSaidasPage:
             self._emit(f"Valor preenchido com sucesso: {v}", row=row.row_number, tipo=row.tipo.value)
 
         with step(log, "entradas_saidas.fill.obs", row=row.row_number, tipo=row.tipo.value, field="OBS"):
-            self.a.click_js(self.OBS)
-            self.a.type(self.OBS, row.descricao_soma, clear=False)
-            v = self._input_value(self.OBS) or row.descricao_soma
+            v = self._type_and_validate_candidates(
+                self.OBS_CANDIDATES,
+                row.descricao_soma,
+                row=row,
+                field="obs",
+                clear=True,
+                click_first=True,
+            )
             self._emit(f"Descrição preenchida com sucesso: {v}", row=row.row_number, tipo=row.tipo.value)
 
     def _fill_entrada_sem_caixa(self, row: ContaOrdemRow) -> None:
@@ -522,7 +672,12 @@ class EntradasSaidasPage:
             tipo=row.tipo.value,
             field="FORMA_PAGAMENTO",
         ):
-            self.a.select2_choose(self.FORMA_PAGAMENTO_ENTRADA, row.forma_pagamento)
+            self._select2_choose_candidates(
+                self.FORMA_PAGAMENTO_ENTRADA_CANDIDATES,
+                row.forma_pagamento,
+                row=row,
+                field="forma_pagamento",
+            )
             self._emit(f"Forma de pagamento selecionada com sucesso: {row.forma_pagamento}", row=row.row_number, tipo=row.tipo.value)
 
     def _resolve_caixa_entrada_select(self) -> Any:
@@ -627,8 +782,13 @@ class EntradasSaidasPage:
                     tipo=row.tipo.value,
                 )
                 try:
-                    self.a.type(self.NUM_DOCUMENTO_MODAL, row.descricao_soma, clear=False)
-                    vdoc = self._input_value(self.NUM_DOCUMENTO_MODAL) or row.descricao_soma
+                    vdoc = self._type_and_validate_candidates(
+                        [self.NUM_DOCUMENTO_MODAL],
+                        row.descricao_soma,
+                        row=row,
+                        field="num_documento_modal",
+                        clear=True,
+                    )
                     self._emit(f"Número do documento preenchido com sucesso: {vdoc}", row=row.row_number, tipo=row.tipo.value)
                 except Exception:
                     pass

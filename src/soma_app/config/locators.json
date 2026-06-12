@@ -1,0 +1,56 @@
+{
+  "entradas_saidas": {
+    "MENU_ENTRADAS_SAIDAS_CANDIDATES": [
+      "//*[self::a or self::button or self::span][contains(.,'Entradas') and (contains(.,'Saídas') or contains(.,'Saidas'))]",
+      "//*[contains(.,'Entradas') and (contains(.,'Saídas') or contains(.,'Saidas'))]"
+    ],
+    "BTN_NOVA_CANDIDATES": [
+      "//a[contains(@class,'btn') and contains(.,'Nova') and contains(.,'Entrada')]",
+      "//button[contains(@class,'btn') and contains(.,'Nova') and contains(.,'Entrada')]",
+      "//*[self::a or self::button][contains(.,'Nova') and contains(.,'Entrada')]",
+      "//a[contains(@class, 'btn btn-primary') and contains(., 'Nova Entrada/Saída')]"
+    ],
+    "RADIO_SAIDA": "/html/body/div[2]/div/div[3]/div/div/form/div[3]/div/div[1]/input",
+    "RADIO_ENTRADA": "/html/body/div[2]/div/div[3]/div/div/form/div[3]/div/div[2]/input",
+    "FORM_CONTAINER": "/html/body/div[2]/div/div[3]/div/div/form",
+    "PLANO_CONTA": "/html/body/div[2]/div/div[3]/div/div/form/div[6]/div/span/span[1]/span/span[1]",
+    "CENTRO_CUSTO": "/html/body/div[2]/div/div[3]/div/div/form/div[7]/div/span/span[1]/span",
+    "DESCRICAO": "/html/body/div[2]/div/div[3]/div/div/form/div[9]/div/input",
+    "VALOR": "/html/body/div[2]/div/div[3]/div/div/form/div[12]/div/input",
+    "OBS": "/html/body/div[2]/div/div[3]/div/div/form/div[21]/div/textarea",
+    "DATA_ENTRADA": "/html/body/div[2]/div/div[3]/div/div/form/div[11]/div/div/input",
+    "FORMA_PAGAMENTO_ENTRADA": "/html/body/div[2]/div/div[3]/div/div/form/div[16]/div/span/span[1]/span",
+    "CAIXA_ENTRADA_CONTAINER": "/html/body/div[2]/div/div[3]/div/div/form/div[20]/div",
+    "DATA_VENCIMENTO_SAIDA": "/html/body/div[2]/div/div[3]/div/div/form/div[10]/div/div/input",
+    "BTN_SALVAR_FORM": "/html/body/div[2]/div/div[3]/div/div/form/div[30]/div/button[1]",
+    "BTN_VOLTAR": "/html/body/div[2]/div/div[2]/div/div/form/div[30]/div/button[2]",
+    "OK_ALERT": "/html/body/div[5]/div/button[1]",
+    "BTN_REALIZAR_PAGAMENTO": "/html/body/ul/li/div/div[2]/button[1]",
+    "BTN_INSERIR_PAGAMENTO_SAIDA": "/html/body/div[2]/div/div[2]/div/div/form/div[29]/div/div[2]/a",
+    "DATA_PAGAMENTO_MODAL": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[1]/div[1]/div/input",
+    "FORMA_PAGAMENTO_MODAL": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]/div[1]/div/select",
+    "CAIXA_PAGAMENTO_MODAL": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[4]/div[2]/div/select",
+    "NUM_DOCUMENTO_MODAL": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]/div[3]/div/input",
+    "BTN_SALVAR_PAGAMENTO_MODAL": "/html/body/div[2]/div/div[5]/div/div/form/div[3]/button",
+    "BTN_INSERIR_BAIXA": "/html/body/div[2]/div/div[3]/div/div/table/tbody/tr[1]/td[6]/button",
+    "DATA_BAIXA": "/html/body/div[2]/div/div[4]/div/div/form/div[2]/div/div/div[1]/div/div/input",
+    "POPUP_CLICK_CANDIDATES": [
+      "/html/body/div[2]/div/div[4]/div/div/form/div[2]/div/div/div[2]",
+      "/html/body/div[2]/div/div[4]/div/div/form/div[3]"
+    ],
+    "BTN_SALVAR_BAIXA": "/html/body/div[2]/div/div[4]/div/div/form/div[3]/button",
+    "PESQ_DESCRICAO": "/html/body/div[2]/div/div[3]/div/div/form/div[3]/div/input",
+    "RADIO_PERIODO": "/html/body/div[2]/div/div[3]/div/div/form/div[7]/div/div/input",
+    "RADIO_DATA_PAGAMENTO": "/html/body/div[2]/div/div[3]/div/div/form/div[8]/div/div[2]/input",
+    "DATA_INI": "/html/body/div[2]/div/div[3]/div/div/form/div[9]/div/div[1]/div/input",
+    "DATA_FIM": "/html/body/div[2]/div/div[3]/div/div/form/div[9]/div/div[3]/div/input",
+    "BTN_PESQUISAR": "/html/body/div[2]/div/div[3]/div/div/form/div[10]/div/button",
+    "RESULT_DOC": "/html/body/div[2]/div/div[4]/div/div/div/div/table/tbody/tr/td[3]",
+    "NO_RESULTS_CANDIDATES": [
+      "//*[@class='dataTables_empty']",
+      "//*[contains(.,'Nenhum registo') or contains(.,'Nenhum registro') or contains(.,'Sem resultados')]",
+      "//*[contains(.,'No matching records') or contains(.,'No data available') or contains(.,'Nothing found')]"
+    ],
+    "DADOS_DOC_CELL": "/html/body/div[2]/div/div[3]/div/div/table/tbody/tr[1]/td[4]"
+  }
+}

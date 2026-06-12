@@ -15,6 +15,7 @@ from soma_app.automation.pages.entradas_saidas_page import EntradasSaidasPage
 from soma_app.automation.pages.login_page import LoginPage
 from soma_app.automation.pages.transferencias_page import TransferenciasPage
 from soma_app.domain.models import ContaOrdemRow, TipoMovimento
+from soma_app.infra import report as legacy_report
 from soma_app.infra.log_config import configure_logging, ensure_artifacts_dirs
 from soma_app.infra.sheets_client import SheetsClient
 from soma_app.infra.soma_api_client import SomaApiClient
@@ -70,6 +71,23 @@ def _now_pt() -> str:
 def _safe_err(e: Exception) -> str:
     s = str(e).strip().replace("\n", " ")
     return s[:180] if s else type(e).__name__
+
+
+def _is_error_doc(doc_value: str) -> bool:
+    return str(doc_value or "").strip().upper() in {"EM ERRO", "EM_ERRO"}
+
+
+def _norm_status(value: Any) -> str:
+    return re.sub(r"[^A-Z0-9]+", "", str(value or "").strip().upper())
+
+
+def _should_recover_doc(raw_row: Dict[str, Any]) -> bool:
+    doc_value = str(raw_row.get(DOC_COL_DEFAULT, "") or "").strip()
+    if not _is_error_doc(doc_value):
+        return False
+
+    status_value = raw_row.get(STATUS_COL_DEFAULT, "")
+    return _norm_status(status_value) == "PENDENTEDOC"
 
 
 def _time_col_name(t: SheetsTable) -> Optional[str]:
@@ -152,8 +170,8 @@ def _chromedriver_version_from_capabilities(driver: Any) -> str:
 def _find_chromedriver_in_known_caches() -> str:
     """
     Fallback: procura chromedriver.exe nos caches comuns:
-      - Selenium Manager: %USERPROFILE%\.cache\selenium\...
-      - webdriver_manager: %USERPROFILE%\.wdm\...
+      - Selenium Manager: %USERPROFILE%\\.cache\\selenium\\...
+      - webdriver_manager: %USERPROFILE%\\.wdm\\...
     """
     candidates: list[Path] = []
 
@@ -306,26 +324,50 @@ class _EntradasSaidasAdapter:
     def __init__(self, primary: Any, fallback: Any | None = None):
         self.primary = primary
         self.fallback = fallback
+        self._api_enabled = True
+
+    @staticmethod
+    def _is_auth_error(e: Exception) -> bool:
+        status_code = getattr(e, "status_code", None)
+        if status_code in {401, 403}:
+            return True
+        msg = str(e).lower()
+        return ("sessão inválida" in msg) or ("sessao invalida" in msg) or ("unauthorized" in msg)
+
+    def _disable_api_if_needed(self, e: Exception, *, op: str) -> None:
+        if self.fallback is None:
+            return
+        if self._api_enabled and self._is_auth_error(e):
+            self._api_enabled = False
+            logger.warning("API desativada para Entradas/Saídas após falha de autenticação (%s).", op)
 
     def create_and_get_doc_id(self, row: ContaOrdemRow) -> str:
+        if (not self._api_enabled) and self.fallback is not None:
+            return self.fallback.create_and_get_doc_id(row)
         try:
             return self.primary.create_and_get_doc_id(row)
         except Exception as e:
+            self._disable_api_if_needed(e, op="create")
             if self.fallback is None:
                 raise
             logger.warning("API falhou (create Entradas/Saídas). Vou tentar Selenium. err=%s", _safe_err(e))
             return self.fallback.create_and_get_doc_id(row)
 
     def recover_doc_id(self, row: ContaOrdemRow) -> str:
+        if (not self._api_enabled) and self.fallback is not None:
+            return self.fallback.recover_doc_id(row)
         try:
             return self.primary.recover_doc_id(row)
         except Exception as e:
+            self._disable_api_if_needed(e, op="recover")
             if self.fallback is None:
                 raise
             logger.warning("API falhou (recover DOC). Vou tentar Selenium. err=%s", _safe_err(e))
             return self.fallback.recover_doc_id(row)
 
     def fetch_dados_doc(self, doc_id: str) -> str:
+        if (not self._api_enabled) and self.fallback is not None and hasattr(self.fallback, "fetch_dados_doc"):
+            return self.fallback.fetch_dados_doc(doc_id)
         return self.primary.fetch_dados_doc(doc_id)
 
 
@@ -333,11 +375,30 @@ class _TransferenciasAdapter:
     def __init__(self, primary: Any, fallback: Any | None = None):
         self.primary = primary
         self.fallback = fallback
+        self._api_enabled = True
+
+    @staticmethod
+    def _is_auth_error(e: Exception) -> bool:
+        status_code = getattr(e, "status_code", None)
+        if status_code in {401, 403}:
+            return True
+        msg = str(e).lower()
+        return ("sessão inválida" in msg) or ("sessao invalida" in msg) or ("unauthorized" in msg)
+
+    def _disable_api_if_needed(self, e: Exception) -> None:
+        if self.fallback is None:
+            return
+        if self._api_enabled and self._is_auth_error(e):
+            self._api_enabled = False
+            logger.warning("API desativada para Transferências após falha de autenticação.")
 
     def run(self, row: ContaOrdemRow) -> str:
+        if (not self._api_enabled) and self.fallback is not None:
+            return self.fallback.run(row)
         try:
             return self.primary.run(row)
         except Exception as e:
+            self._disable_api_if_needed(e)
             if self.fallback is None:
                 raise
             logger.warning("API falhou (Transferência). Vou tentar Selenium. err=%s", _safe_err(e))
@@ -347,8 +408,31 @@ class _TransferenciasAdapter:
 def _load_settings() -> Any:
     from soma_app.config.settings import Settings
 
-    env_file = os.getenv("ENV_FILE")
-    return Settings.from_env(env_file=env_file if env_file else None)
+    # run_soma.py -> workflows -> soma_app -> src -> <project_root>
+    project_root = Path(__file__).resolve().parents[3]
+
+    env_file = (os.getenv("ENV_FILE") or "").strip()
+    if env_file:
+        env_path = Path(env_file)
+        if not env_path.is_absolute():
+            # 1) tenta relativo ao cwd (comportamento padrão)
+            cwd_candidate = Path.cwd() / env_path
+            if cwd_candidate.exists():
+                return Settings.from_env(env_file=str(cwd_candidate))
+
+            # 2) tenta relativo à raiz do projeto
+            project_candidate = project_root / env_path
+            if project_candidate.exists():
+                return Settings.from_env(env_file=str(project_candidate))
+        elif env_path.exists():
+            return Settings.from_env(env_file=str(env_path))
+
+    # fallback robusto: procura deploy/.env na raiz do projeto
+    default_env = project_root / "deploy" / ".env"
+    if default_env.exists():
+        return Settings.from_env(env_file=str(default_env))
+
+    return Settings.from_env(env_file=None)
 
 
 def _sheet_name(settings: Any) -> str:
@@ -391,6 +475,46 @@ def _run_post_processes(
             logger.exception("Falha no processo de atualização da sheet SOMA.")
 
 
+def _bootstrap_api_session(
+    api_client: SomaApiClient,
+    *,
+    session_token: str,
+    has_api_credentials: bool,
+    auth_preference: str,
+    close_on_exit: bool,
+) -> None:
+    preference = (auth_preference or "").strip().lower()
+    if preference not in {"login_first", "token_first"}:
+        preference = "token_first"
+
+    token = (session_token or "").strip()
+    prefer_login = preference == "login_first"
+
+    if token and not prefer_login:
+        api_client.use_session_token(token, close_on_exit=close_on_exit)
+        return
+
+    if has_api_credentials:
+        try:
+            api_client.open_session()
+            return
+        except Exception:
+            if token:
+                logger.warning(
+                    "Falha ao abrir nova sessao na API com SOMA_API_LOGIN. "
+                    "Usando SOMA_SESSION_TOKEN como fallback."
+                )
+                api_client.use_session_token(token, close_on_exit=close_on_exit)
+                return
+            raise
+
+    if token:
+        api_client.use_session_token(token, close_on_exit=close_on_exit)
+        return
+
+    api_client.open_session()
+
+
 def main() -> int:
     overall_t0 = time.perf_counter()
 
@@ -422,216 +546,260 @@ def main() -> int:
     total_recovered = 0
     total_transfer = 0
     row_times_ms: list[int] = []
-
-    with step(
-        logger,
-        "run.init",
-        run_id=run_id,
-        sheet=ws,
-        headless=headless,
-        backend=backend_mode,
-        caixas_bancos=run_caixas_bancos,
-        api_fallback=api_fallback_selenium,
-    ):
-        sheets = SheetsClient(settings)
-
-        needs_browser = (not api_first) or run_caixas_bancos or (api_first and api_fallback_selenium)
-        if needs_browser:
-            logger.warning("Validando a versão do ChromeDriver (inicialização do browser)...")
-            t0_drv = time.perf_counter()
-
-            bundle = WebDriverFactory.create(settings)
-
-            dt_drv_ms = int((time.perf_counter() - t0_drv) * 1000)
-            driver_obj = getattr(bundle, "a", None)
-            wd = _unwrap_webdriver(driver_obj)
-
-            # =================================================================================
-            # === A CURA PARA A CEGUEIRA NO SERVIDOR LINUX (FORÇAR RESOLUÇÃO FULL HD) ===
-            # =================================================================================
-            if wd:
-                try:
-                    wd.set_window_size(1920, 1080)
-                except Exception as e:
-                    logger.debug("Falha ao forçar window_size: %s", e)
-            # =================================================================================
-
-            info = _get_chromedriver_info(wd)
-            chrome_ver = _get_chrome_version(wd)
-
-            logger.warning(
-                "ChromeDriver validado | chromedriver=%s | chrome=%s | path=%s | source=%s | dt_ms=%s",
-                (info.get("version") or "desconhecida"),
-                (chrome_ver or "desconhecida"),
-                (info.get("path") or "n/a"),
-                (info.get("source") or "unknown"),
-                dt_drv_ms,
-            )
-
-        if api_first:
-            base_url = _env_str("SOMA_API_BASE_URL", "https://api-production-082f6.up.railway.app").rstrip("/")
-
-            api_client = SomaApiClient(
-                base_url=base_url,
-                login=_env_str("SOMA_API_LOGIN", ""),
-                password=_env_str("SOMA_API_PASSWORD", ""),
-                timeout_seconds=int(_env_str("SOMA_API_TIMEOUT", "40") or 40),
-                max_retries=int(_env_str("SOMA_API_RETRIES", "2") or 2),
-                backoff_seconds=float(_env_str("SOMA_API_BACKOFF", "0.9") or 0.9),
-            )
-
-            sess = _env_str("SOMA_SESSION_TOKEN", "")
-            if sess:
-                api_client.use_session_token(sess, close_on_exit=_bool_env("SOMA_SESSION_TOKEN_CLOSE", False))
-            else:
-                api_client.open_session()
-
-    if bundle is not None:
-        with step(logger, "run.login_ui", run_id=run_id):
-            login = LoginPage(bundle.a, settings)
-            if hasattr(login, "run"):
-                login.run()
-            else:
-                login.login()
-
-    entradas_saidas: Any
-    transferencias: Any
-
-    if api_first:
-        if api_client is None:
-            raise RuntimeError("API client não inicializado (modo SOMA_BACKEND=api).")
-
-        entradas_api = EntradasSaidasApi(api_client)
-        transfer_api = TransferenciasApi(api_client)
-
-        if api_fallback_selenium and bundle is not None:
-            entradas_ui = EntradasSaidasPage(bundle.a, settings)
-            transfer_ui = TransferenciasPage(bundle.a, settings)
-            entradas_saidas = _EntradasSaidasAdapter(entradas_api, entradas_ui)
-            transferencias = _TransferenciasAdapter(transfer_api, transfer_ui)
-        else:
-            entradas_saidas = _EntradasSaidasAdapter(entradas_api, None)
-            transferencias = _TransferenciasAdapter(transfer_api, None)
-    else:
-        if bundle is None:
-            raise RuntimeError("Browser não inicializado em modo Selenium.")
-        entradas_saidas = EntradasSaidasPage(bundle.a, settings)
-        transferencias = TransferenciasPage(bundle.a, settings)
+    attempted_rows: set[int] = set()
 
     batch = 1
-    try:
-        while True:
-            with step(logger, "run.preprocess", run_id=run_id, batch=batch):
-                sheets = SheetsClient(settings)
-                result = preprocess_contaordem(sheets, ws=ws, run_id=run_id, batch=batch)
+    with step(logger, "run.preprocess", run_id=run_id, batch=batch, initial=True):
+        sheets = SheetsClient(settings)
+        result = preprocess_contaordem(sheets, ws=ws, run_id=run_id, batch=batch)
+    legacy_report.preprocess_summary(result.eligible_total, len(result.workset))
 
-            if not result.workset:
-                _run_post_processes(
-                    settings=settings,
-                    bundle=bundle,
-                    run_caixas_bancos=run_caixas_bancos,
-                )
-                break
+    if not result.workset:
+        logger.warning("Nenhum documento pendente. Execução encerrada sem login/acesso web.")
+    else:
+        try:
+            with step(
+                logger,
+                "run.init",
+                run_id=run_id,
+                sheet=ws,
+                headless=headless,
+                backend=backend_mode,
+                caixas_bancos=run_caixas_bancos,
+                api_fallback=api_fallback_selenium,
+            ):
+                needs_browser = (not api_first) or run_caixas_bancos or (api_first and api_fallback_selenium)
+                if needs_browser:
+                    logger.warning("Validando a versão do ChromeDriver (inicialização do browser)...")
+                    t0_drv = time.perf_counter()
 
-            table = SheetsTable(sheets, ws)
-            table.load()
-            run_rows: Dict[int, Dict[str, Any]] = {int(r["row"]): r for r in result.workset}
+                    bundle = WebDriverFactory.create(settings)
 
-            try:
-                for r in result.workset:
-                    row_idx = int(r["row"])
-                    tipo_txt = str(r.get("TIPO") or r.get("tipo") or "").strip() or "-"
+                    dt_drv_ms = int((time.perf_counter() - t0_drv) * 1000)
+                    driver_obj = getattr(bundle, "a", None)
+                    wd = _unwrap_webdriver(driver_obj)
 
-                    doc_cell = str(r.get(DOC_COL_DEFAULT, "") or "").strip().upper()
-                    status_cell = str(r.get(STATUS_COL_DEFAULT, "") or "").strip().upper()
-                    is_recover = doc_cell == "EM ERRO" and status_cell == "PENDENTE_DOC"
-
-                    os.environ["ROW_NUMBER"] = str(row_idx)
-                    row_t0 = time.perf_counter()
-
-                    with step(logger, "run.process_row", run_id=run_id, batch=batch, row=row_idx, tipo=tipo_txt):
+                    # =================================================================================
+                    # === A CURA PARA A CEGUEIRA NO SERVIDOR LINUX (FORÇAR RESOLUÇÃO FULL HD) ===
+                    # =================================================================================
+                    if wd:
                         try:
-                            row_model = ContaOrdemRow.from_table_row(row_number=row_idx, raw=r)
+                            wd.set_window_size(1920, 1080)
+                        except Exception as e:
+                            logger.debug("Falha ao forçar window_size: %s", e)
+                    # =================================================================================
 
-                            if row_model.tipo == TipoMovimento.TRANSFERENCIA:
-                                doc_id = transferencias.run(row_model)
+                    info = _get_chromedriver_info(wd)
+                    chrome_ver = _get_chrome_version(wd)
+
+                    logger.warning(
+                        "ChromeDriver validado | chromedriver=%s | chrome=%s | path=%s | source=%s | dt_ms=%s",
+                        (info.get("version") or "desconhecida"),
+                        (chrome_ver or "desconhecida"),
+                        (info.get("path") or "n/a"),
+                        (info.get("source") or "unknown"),
+                        dt_drv_ms,
+                    )
+
+                if api_first:
+                    base_url = _env_str("SOMA_API_BASE_URL", "https://api-production-082f6.up.railway.app").rstrip("/")
+                    api_login = _env_str("SOMA_API_LOGIN", "")
+                    api_password = _env_str("SOMA_API_PASSWORD", "")
+                    session_token = _env_str("SOMA_SESSION_TOKEN", "")
+                    has_api_credentials = bool(api_login and api_password)
+                    api_auth_preference = _env_str("SOMA_API_AUTH_PREFERENCE", "token_first")
+                    session_token_close = _bool_env("SOMA_SESSION_TOKEN_CLOSE", False)
+
+                    api_client = SomaApiClient(
+                        base_url=base_url,
+                        login=api_login,
+                        password=api_password,
+                        timeout_seconds=int(_env_str("SOMA_API_TIMEOUT", "40") or 40),
+                        max_retries=int(_env_str("SOMA_API_RETRIES", "2") or 2),
+                        backoff_seconds=float(_env_str("SOMA_API_BACKOFF", "0.9") or 0.9),
+                    )
+
+                    _bootstrap_api_session(
+                        api_client,
+                        session_token=session_token,
+                        has_api_credentials=has_api_credentials,
+                        auth_preference=api_auth_preference,
+                        close_on_exit=session_token_close,
+                    )
+
+            if bundle is not None:
+                with step(logger, "run.login_ui", run_id=run_id):
+                    login = LoginPage(bundle.a, settings)
+                    if hasattr(login, "run"):
+                        login.run()
+                    else:
+                        login.login()
+
+            entradas_saidas: Any
+            transferencias: Any
+
+            if api_first:
+                if api_client is None:
+                    raise RuntimeError("API client não inicializado (modo SOMA_BACKEND=api).")
+
+                entradas_api = EntradasSaidasApi(api_client)
+                transfer_api = TransferenciasApi(api_client)
+
+                if api_fallback_selenium and bundle is not None:
+                    entradas_ui = EntradasSaidasPage(bundle.a, settings)
+                    transfer_ui = TransferenciasPage(bundle.a, settings)
+                    entradas_saidas = _EntradasSaidasAdapter(entradas_api, entradas_ui)
+                    transferencias = _TransferenciasAdapter(transfer_api, transfer_ui)
+                else:
+                    entradas_saidas = _EntradasSaidasAdapter(entradas_api, None)
+                    transferencias = _TransferenciasAdapter(transfer_api, None)
+            else:
+                if bundle is None:
+                    raise RuntimeError("Browser não inicializado em modo Selenium.")
+                entradas_saidas = EntradasSaidasPage(bundle.a, settings)
+                transferencias = TransferenciasPage(bundle.a, settings)
+
+            while True:
+                processable_rows: list[Dict[str, Any]] = []
+                for raw_row in result.workset:
+                    row_number = int(raw_row["row"])
+                    if row_number in attempted_rows:
+                        continue
+                    processable_rows.append(raw_row)
+
+                if not processable_rows:
+                    logger.warning(
+                        "Sem novas linhas para processar nesta execução. "
+                        "As restantes já foram tentadas no mesmo run_id."
+                    )
+                    break
+
+                table = SheetsTable(sheets, ws)
+                table.load()
+                run_rows: Dict[int, Dict[str, Any]] = {int(r["row"]): r for r in processable_rows}
+
+                try:
+                    total_processable = len(processable_rows)
+                    for progress_current, r in enumerate(processable_rows, start=1):
+                        row_idx = int(r["row"])
+                        attempted_rows.add(row_idx)
+                        tipo_txt = str(r.get("TIPO") or r.get("tipo") or "").strip() or "-"
+
+                        is_recover = _should_recover_doc(r)
+
+                        os.environ["ROW_NUMBER"] = str(row_idx)
+                        row_t0 = time.perf_counter()
+
+                        with step(
+                            logger,
+                            "run.process_row",
+                            run_id=run_id,
+                            batch=batch,
+                            row=row_idx,
+                            tipo=tipo_txt,
+                            progress_current=progress_current,
+                            progress_total=total_processable,
+                        ):
+                            try:
+                                row_model = ContaOrdemRow.from_table_row(row_number=row_idx, raw=r)
+
+                                if row_model.tipo == TipoMovimento.TRANSFERENCIA:
+                                    doc_id = transferencias.run(row_model)
+                                    elapsed_ms = int((time.perf_counter() - row_t0) * 1000)
+                                    row_times_ms.append(elapsed_ms)
+                                    _mark_row_ok(table, row_idx, str(doc_id), iduser, elapsed_ms=elapsed_ms)
+
+                                    total_rows_processed += 1
+                                    total_ok += 1
+                                    total_transfer += 1
+                                    continue
+
+                                if is_recover:
+                                    doc_id = entradas_saidas.recover_doc_id(row_model)
+                                    total_recovered += 1
+                                else:
+                                    doc_id = entradas_saidas.create_and_get_doc_id(row_model)
+                                    total_created += 1
+
+                                dados_doc = None
+                                try:
+                                    dados_doc = entradas_saidas.fetch_dados_doc(str(doc_id))
+                                except Exception:
+                                    dados_doc = None
+
                                 elapsed_ms = int((time.perf_counter() - row_t0) * 1000)
                                 row_times_ms.append(elapsed_ms)
-                                _mark_row_ok(table, row_idx, str(doc_id), iduser, elapsed_ms=elapsed_ms)
+                                _mark_row_ok(
+                                    table,
+                                    row_idx,
+                                    str(doc_id),
+                                    iduser,
+                                    dados_doc=dados_doc,
+                                    elapsed_ms=elapsed_ms,
+                                )
 
                                 total_rows_processed += 1
                                 total_ok += 1
-                                total_transfer += 1
-                                continue
 
-                            if is_recover:
-                                doc_id = entradas_saidas.recover_doc_id(row_model)
-                                total_recovered += 1
-                            else:
-                                doc_id = entradas_saidas.create_and_get_doc_id(row_model)
-                                total_created += 1
+                            except Exception as e:
+                                elapsed_ms = int((time.perf_counter() - row_t0) * 1000)
+                                row_times_ms.append(elapsed_ms)
+                                err_msg = _safe_err(e)
 
-                            dados_doc = None
-                            try:
-                                dados_doc = entradas_saidas.fetch_dados_doc(str(doc_id))
-                            except Exception:
-                                dados_doc = None
+                                if _is_pending_doc_exception(e):
+                                    _mark_row_error(
+                                        table,
+                                        row_idx,
+                                        err_msg,
+                                        allow_retry=False,
+                                        force_doc="EM ERRO",
+                                        force_status="PENDENTE_DOC",
+                                        elapsed_ms=elapsed_ms,
+                                    )
+                                else:
+                                    _mark_row_error(
+                                        table,
+                                        row_idx,
+                                        err_msg,
+                                        allow_retry=allow_retry,
+                                        elapsed_ms=elapsed_ms,
+                                    )
 
-                            elapsed_ms = int((time.perf_counter() - row_t0) * 1000)
-                            row_times_ms.append(elapsed_ms)
-                            _mark_row_ok(
-                                table,
-                                row_idx,
-                                str(doc_id),
-                                iduser,
-                                dados_doc=dados_doc,
-                                elapsed_ms=elapsed_ms,
-                            )
+                                total_rows_processed += 1
+                                total_err += 1
 
-                            total_rows_processed += 1
-                            total_ok += 1
+                finally:
+                    if allow_retry:
+                        table.load()
+                        current_rows = {int(x["row"]): x for x in table.get_records_with_row()}
+                        run_rows_live = {idx: current_rows.get(idx, {}) for idx in run_rows.keys()}
+                        _unlock_still_processing(table, run_rows_live)
 
-                        except Exception as e:
-                            elapsed_ms = int((time.perf_counter() - row_t0) * 1000)
-                            row_times_ms.append(elapsed_ms)
-                            err_msg = _safe_err(e)
+                batch += 1
+                with step(logger, "run.preprocess", run_id=run_id, batch=batch):
+                    sheets = SheetsClient(settings)
+                    result = preprocess_contaordem(sheets, ws=ws, run_id=run_id, batch=batch)
+                legacy_report.preprocess_summary(result.eligible_total, len(result.workset))
 
-                            if _is_pending_doc_exception(e):
-                                _mark_row_error(
-                                    table,
-                                    row_idx,
-                                    err_msg,
-                                    allow_retry=False,
-                                    force_doc="EM ERRO",
-                                    force_status="PENDENTE_DOC",
-                                    elapsed_ms=elapsed_ms,
-                                )
-                            else:
-                                _mark_row_error(table, row_idx, err_msg, allow_retry=allow_retry, elapsed_ms=elapsed_ms)
+                if not result.workset:
+                    _run_post_processes(
+                        settings=settings,
+                        bundle=bundle,
+                        run_caixas_bancos=run_caixas_bancos,
+                    )
+                    break
 
-                            total_rows_processed += 1
-                            total_err += 1
-
-            finally:
-                if allow_retry:
-                    table.load()
-                    current_rows = {int(x["row"]): x for x in table.get_records_with_row()}
-                    run_rows_live = {idx: current_rows.get(idx, {}) for idx in run_rows.keys()}
-                    _unlock_still_processing(table, run_rows_live)
-
-            batch += 1
-
-    finally:
-        try:
-            if api_client is not None:
-                api_client.close_session()
-        except Exception:
-            pass
-        try:
-            if bundle is not None:
-                bundle.quit()
-        except Exception:
-            pass
+        finally:
+            try:
+                if api_client is not None:
+                    api_client.close_session()
+            except Exception:
+                pass
+            try:
+                if bundle is not None:
+                    bundle.quit()
+            except Exception:
+                pass
 
     total_elapsed_ms = int((time.perf_counter() - overall_t0) * 1000)
     avg_ms = int(sum(row_times_ms) / len(row_times_ms)) if row_times_ms else 0

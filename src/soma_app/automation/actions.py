@@ -158,8 +158,15 @@ class Actions:
         # abrir dropdown
         try:
             self.click(opener)
-        except Exception:
-            self.click_js(opener)
+        except Exception as first_err:
+            try:
+                self.click_js(opener)
+            except Exception as second_err:
+                p = self.screenshot("select2_open_fail")
+                raise TimeoutException(
+                    f"Falha ao abrir Select2 | opener={opener} | value='{value}' | screenshot={p} | "
+                    f"click_err={first_err} | click_js_err={second_err}"
+                ) from second_err
 
         css_search = (By.CSS_SELECTOR, "span.select2-container--open input.select2-search__field")
         css_options = (By.CSS_SELECTOR, "li.select2-results__option")

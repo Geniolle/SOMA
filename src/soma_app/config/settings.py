@@ -62,6 +62,19 @@ class Settings:
         load_dotenv(dotenv_path=env_file, override=False)
 
         cred_path = Path(_strip_quotes(os.getenv("GOOGLE_CREDENTIALS_PATH", "")))
+        if str(cred_path).strip() and not cred_path.is_absolute() and env_file:
+            env_dir = Path(env_file).resolve().parent
+            local_candidate = (env_dir / cred_path).resolve()
+            project_candidate = (env_dir.parent / cred_path).resolve()
+
+            if local_candidate.exists():
+                cred_path = local_candidate
+            elif project_candidate.exists():
+                cred_path = project_candidate
+            else:
+                # fallback previsível: manter relativo ao diretório do .env
+                cred_path = local_candidate
+
         spreadsheet_url = _strip_quotes(os.getenv("SPREADSHEET_URL", ""))
 
         sheet_contaordem = _strip_quotes(os.getenv("SHEET_CONTAORDEM", "CONTAORDEM"))

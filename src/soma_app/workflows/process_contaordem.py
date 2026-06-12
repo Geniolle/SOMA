@@ -24,6 +24,10 @@ def _norm(s: Any) -> str:
     return str(s or "").strip()
 
 
+def _is_error_doc(doc_value: str) -> bool:
+    return _norm(doc_value).upper() in {"EM ERRO", "EM_ERRO"}
+
+
 def _norm_tipo(v: Any) -> str:
     t = _norm(v).lower()
     if t in {"entrada", "entradas"}:
@@ -226,6 +230,7 @@ class PreprocessResult:
     inflight: int
     batch_size: int
     capacity_new: int
+    eligible_total: int
     workset: List[Dict[str, Any]]
     newly_locked: int
     invalid: int
@@ -251,7 +256,11 @@ def preprocess_contaordem(
         Entrada primeiro; se houver Entrada pendente, NÃO locka Saídas/Transferências neste batch
         depois Saída
         depois Transferência
-    - locka APENAS o workset (doc_col = 'Em processamento')
+    - linhas já em "Em processamento" também entram como candidatas de reprocessamento
+    - linhas com DOC. SOMA = "EM ERRO" também reentram na fila
+      a decisão entre recriar ou só recuperar DOC fica no run_soma via STATUS
+    - coluna STATUS não participa da validação de fila
+    - locka APENAS o workset que ainda não está lockado (doc_col = 'Em processamento')
     """
     bsz = batch_size or _int_env("BATCH_SIZE", 20)
 
@@ -273,20 +282,15 @@ def preprocess_contaordem(
     for r in rows:
         parsed += 1
         doc = _norm(r.get(doc_col))
-        status = _norm(r.get(status_col)).upper()
         tipo = _norm_tipo(r.get(tipo_col))
 
-        # inflight: já lockado
-        if doc.lower() == lock_value.lower():
+        # já lockado: conta inflight, mas mantém como candidato de reprocessamento
+        is_locked = doc.lower() == lock_value.lower()
+        is_error_doc = _is_error_doc(doc)
+        if is_locked:
             inflight += 1
-            continue
-
-        # já processado (tem doc)
-        if doc != "":
-            continue
-
-        # status ERRO/INVALIDO não entra
-        if status in {"ERRO", "ERROR", "INVALIDO", "INVÁLIDO"}:
+        elif doc != "" and not is_error_doc:
+            # já processado (tem doc diferente de EM ERRO)
             continue
 
         # ✅ NOVO: aceita Transferência
@@ -301,23 +305,29 @@ def preprocess_contaordem(
         else:
             candidates_transfer.append(r)
 
-    capacity_new = max(bsz - inflight, 0)
+    # capacidade total do batch (inclui reprocessamentos de linhas lockadas)
+    capacity_new = bsz
 
     # prioridade: Entrada -> Saída -> Transferência
     if candidates_entrada:
         candidates_entrada.sort(key=lambda x: int(x.get("row", 0)))
-        workset = candidates_entrada[:capacity_new]
+        eligible_rows = candidates_entrada
     elif candidates_saida:
         candidates_saida.sort(key=lambda x: int(x.get("row", 0)))
-        workset = candidates_saida[:capacity_new]
+        eligible_rows = candidates_saida
     else:
         candidates_transfer.sort(key=lambda x: int(x.get("row", 0)))
-        workset = candidates_transfer[:capacity_new]
+        eligible_rows = candidates_transfer
+
+    eligible_total = len(eligible_rows)
+    workset = eligible_rows[:capacity_new]
 
     # lock apenas o workset
     updates: List[Tuple[int, str, Any]] = []
     for r in workset:
-        updates.append((int(r["row"]), doc_col, lock_value))
+        doc = _norm(r.get(doc_col))
+        if doc.lower() != lock_value.lower():
+            updates.append((int(r["row"]), doc_col, lock_value))
 
     if updates:
         t.batch_update_cells(updates)
@@ -325,8 +335,8 @@ def preprocess_contaordem(
     newly_locked = len(updates)
 
     logger.info(
-        "PREPROCESS | total=%s | parsed=%s | parse_errors=%s | inflight=%s | batch_size=%s | capacity_new=%s | workset=%s | newly_locked=%s | invalid=%s",
-        total, parsed, parse_errors, inflight, bsz, capacity_new, len(workset), newly_locked, invalid,
+        "PREPROCESS | total=%s | parsed=%s | parse_errors=%s | inflight=%s | batch_size=%s | capacity_new=%s | eligible_total=%s | workset=%s | newly_locked=%s | invalid=%s",
+        total, parsed, parse_errors, inflight, bsz, capacity_new, eligible_total, len(workset), newly_locked, invalid,
     )
 
     return PreprocessResult(
@@ -336,6 +346,7 @@ def preprocess_contaordem(
         inflight=inflight,
         batch_size=bsz,
         capacity_new=capacity_new,
+        eligible_total=eligible_total,
         workset=workset,
         newly_locked=newly_locked,
         invalid=invalid,
