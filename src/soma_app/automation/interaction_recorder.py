@@ -3,10 +3,12 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from selenium.webdriver.common.by import By
 
@@ -26,10 +28,34 @@ from soma_app.infra.trace import log_kv
 
 log = logging.getLogger("soma_app.automation.interaction_recorder")
 
+_ALLOWED_DATA_ATTRS = {
+    "data-testid",
+    "data-test",
+    "data-qa",
+    "data-cy",
+    "data-id",
+    "data-name",
+}
+_TEXT_TAGS = {"a", "button", "label", "option", "span", "th"}
+_STATE_ACTIONS = {
+    "dom_changed",
+    "url_changed",
+    "modal_visible",
+    "modal_hidden",
+    "window_changed",
+    "new_window",
+    "window_closed",
+}
+_SENSITIVE_QUERY_KEYS = re.compile(
+    r"(?i)(token|auth|authorization|password|passwd|secret|session|sid|key|code|"
+    r"email|user|username|document|nif|vat|iban|account)"
+)
+
+
 DEFAULT_INTERACTION_SCRIPT = r"""
 (function () {
   if (window.__SOMA_INTERACTION_RECORDER__ && window.__SOMA_INTERACTION_RECORDER__.installed) {
-    return window.__SOMA_INTERACTION_RECORDER__;
+    return true;
   }
 
   const recorder = {
@@ -37,54 +63,12 @@ DEFAULT_INTERACTION_SCRIPT = r"""
     seq: 0,
     queue: [],
     lastModalVisible: false,
-    lastModalCount: 0,
     lastUrl: location.href,
-    lastTitle: document.title || "",
-    lastWindowHandle: String(window.name || ""),
   };
 
-  const safeText = (value) => {
-    const raw = String(value ?? "");
-    return raw.replace(/\s+/g, " ").trim();
-  };
+  const safeText = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
 
-  const escapeXpath = (value) => {
-    const s = String(value ?? "");
-    if (!s.includes("'")) return `'${s}'`;
-    if (!s.includes('"')) return `"${s}"`;
-    return "concat(" + s.split("'").map((part) => `'${part}'`).join(", \"'\", ") + ")";
-  };
-
-  const getFramePath = () => {
-    const parts = [];
-    let win = window;
-    let depth = 0;
-    while (win && win !== win.top && depth < 8) {
-      const frame = win.frameElement;
-      if (!frame) break;
-      const id = frame.getAttribute("id") || frame.getAttribute("name");
-      if (id) {
-        parts.unshift(safeText(id));
-      } else {
-        let index = 1;
-        let sib = frame.previousElementSibling;
-        while (sib) {
-          if (sib.tagName && sib.tagName.toLowerCase() === "iframe") index += 1;
-          sib = sib.previousElementSibling;
-        }
-        parts.unshift(`iframe[${index}]`);
-      }
-      try {
-        win = win.parent;
-      } catch (err) {
-        break;
-      }
-      depth += 1;
-    }
-    return parts.length ? `top/${parts.join("/")}` : "top";
-  };
-
-  const getLabel = (el) => {
+  const labelFor = (el) => {
     try {
       if (el.labels && el.labels.length) {
         return Array.from(el.labels)
@@ -93,7 +77,7 @@ DEFAULT_INTERACTION_SCRIPT = r"""
           .join(" | ");
       }
     } catch (err) {}
-    const id = el.getAttribute && el.getAttribute("id");
+    const id = el && el.getAttribute ? el.getAttribute("id") : "";
     if (!id) return "";
     try {
       const label = document.querySelector(`label[for="${CSS.escape(id)}"]`);
@@ -103,316 +87,209 @@ DEFAULT_INTERACTION_SCRIPT = r"""
     }
   };
 
-  const getDataAttrs = (el) => {
+  const stableDataAttrs = (el) => {
     const out = {};
+    const allowed = new Set(["data-testid", "data-test", "data-qa", "data-cy", "data-id", "data-name"]);
     try {
       Array.from(el.attributes || []).forEach((attr) => {
-        if (attr.name && attr.name.startsWith("data-")) {
-          out[attr.name] = String(attr.value || "");
-        }
+        if (allowed.has(attr.name)) out[attr.name] = String(attr.value || "");
       });
     } catch (err) {}
     return out;
   };
 
   const describe = (el) => {
-    if (!el || !el.getAttribute) {
-      return {
-        tag: "",
-        id: "",
-        name: "",
-        type: "",
-        class_name: "",
-        role: "",
-        label: "",
-        aria_label: "",
-        placeholder: "",
-        text: "",
-        data_attrs: {},
-      };
-    }
+    if (!el || !el.getAttribute) return {};
     const rect = el.getBoundingClientRect ? el.getBoundingClientRect() : { x: 0, y: 0, width: 0, height: 0 };
     const style = window.getComputedStyle ? window.getComputedStyle(el) : null;
-    const visible = !!((rect.width || rect.height) && (!style || (style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0")));
+    const tag = (el.tagName || "").toLowerCase();
+    const allowedTextTags = new Set(["a", "button", "label", "option", "span", "th"]);
     return {
-      tag: (el.tagName || "").toLowerCase(),
+      tag,
       id: el.getAttribute("id") || "",
       name: el.getAttribute("name") || "",
       type: el.getAttribute("type") || "",
       class_name: el.getAttribute("class") || "",
       role: el.getAttribute("role") || "",
-      label: getLabel(el),
+      label: labelFor(el),
       aria_label: el.getAttribute("aria-label") || "",
       aria_labelledby: el.getAttribute("aria-labelledby") || "",
       placeholder: el.getAttribute("placeholder") || "",
       title: el.getAttribute("title") || "",
-      text: safeText(el.innerText || el.textContent || ""),
-      data_attrs: getDataAttrs(el),
-      visible,
+      text: allowedTextTags.has(tag) ? safeText(el.innerText || el.textContent || "").slice(0, 120) : "",
+      data_attrs: stableDataAttrs(el),
+      visible: !!((rect.width || rect.height) && (!style || (
+        style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0"
+      ))),
       enabled: !el.disabled,
       x: Math.round(rect.x || 0),
       y: Math.round(rect.y || 0),
       width: Math.round(rect.width || 0),
       height: Math.round(rect.height || 0),
       in_form: !!(el.closest && el.closest("form")),
-      form_text: el.closest && el.closest("form") ? safeText(el.closest("form").innerText || el.closest("form").textContent || "") : "",
-      css_selector: "",
-      relative_xpath: "",
-      absolute_xpath: "",
-      selector_candidates: [],
     };
+  };
+
+  const modalCount = () => {
+    try {
+      return document.querySelectorAll(
+        '[role="dialog"], [aria-modal="true"], .modal.show, .swal2-container'
+      ).length;
+    } catch (err) {
+      return 0;
+    }
   };
 
   const push = (action, el, extra) => {
     recorder.seq += 1;
-    const desc = describe(el);
     recorder.queue.push({
       seq: recorder.seq,
       timestamp: new Date().toISOString(),
       action,
       page_url: location.href,
       page_title: document.title || "",
-      window_index: 0,
-      window_handle: String(window.name || ""),
-      iframe_path: getFramePath(),
-      ...desc,
+      ...describe(el),
       ...(extra || {}),
     });
   };
 
-  const modalCount = () => {
-    try {
-      return document.querySelectorAll('[role="dialog"], [aria-modal="true"], .modal.show, .swal2-container').length;
-    } catch (err) {
-      return 0;
-    }
-  };
-
   const scanModalTransitions = () => {
-    const count = modalCount();
-    if (count > 0 && !recorder.lastModalVisible) {
+    const visible = modalCount() > 0;
+    if (visible && !recorder.lastModalVisible) {
       recorder.lastModalVisible = true;
-      recorder.lastModalCount = count;
-      push("modal_visible", document.activeElement || document.body, { modal_count: count });
-    } else if (count === 0 && recorder.lastModalVisible) {
+      push("modal_visible", document.activeElement || document.body, { modal_count: modalCount() });
+    } else if (!visible && recorder.lastModalVisible) {
       recorder.lastModalVisible = false;
-      recorder.lastModalCount = 0;
       push("modal_hidden", document.activeElement || document.body, { modal_count: 0 });
-    } else {
-      recorder.lastModalCount = count;
     }
   };
 
   const isSelect2 = (el) => {
     try {
-      if (!el) return false;
-      const cls = String(el.className || "");
-      return cls.includes("select2") || !!(el.closest && el.closest(".select2-container"));
+      const cls = String((el && el.className) || "");
+      return cls.includes("select2") || !!(el && el.closest && el.closest(".select2-container"));
     } catch (err) {
       return false;
     }
   };
 
-  const isSelectControl = (el) => (el && el.tagName && el.tagName.toLowerCase() === "select");
-
-  const onClick = (event) => {
+  document.addEventListener("click", (event) => {
     const target = event.target || document.activeElement || document.body;
-    push("click", target, {
-      is_select2: isSelect2(target),
-      is_select: isSelectControl(target),
-    });
-  };
+    push("click", target, { is_select2: isSelect2(target) });
+  }, true);
 
-  const onInput = (event) => {
+  document.addEventListener("input", (event) => {
     const target = event.target || document.activeElement || document.body;
     const tag = (target.tagName || "").toLowerCase();
     const type = String(target.type || "").toLowerCase();
-    const isSelect2Field = isSelect2(target) || String(target.className || "").includes("select2-search__field");
-    const payload = {
+    const select2 = isSelect2(target) || String(target.className || "").includes("select2-search__field");
+    const extra = {
       value: "[redacted]",
       value_length: String(target.value || "").length,
       value_type: type || tag || "text",
-      is_select2: isSelect2Field,
-      is_select: isSelectControl(target),
+      is_select2: select2,
     };
     if (tag === "input" && (type === "checkbox" || type === "radio")) {
-      payload.checked = !!target.checked;
-      delete payload.value;
-      delete payload.value_length;
-      delete payload.value_type;
+      delete extra.value;
+      delete extra.value_length;
+      delete extra.value_type;
+      extra.checked = !!target.checked;
     }
-    push(isSelect2Field ? "select2_input" : "input", target, payload);
-  };
+    push(select2 ? "select2_input" : "input", target, extra);
+  }, true);
 
-  const onChange = (event) => {
+  document.addEventListener("change", (event) => {
     const target = event.target || document.activeElement || document.body;
     const tag = (target.tagName || "").toLowerCase();
     const type = String(target.type || "").toLowerCase();
-    const payload = {
+    const select2 = isSelect2(target);
+    const extra = {
       value: "[redacted]",
       value_length: String(target.value || "").length,
       value_type: type || tag || "text",
-      is_select2: isSelect2(target),
-      is_select: isSelectControl(target),
+      is_select2: select2,
     };
+    if (tag === "select") {
+      extra.selected_index = Number.isInteger(target.selectedIndex) ? target.selectedIndex : null;
+      extra.option_count = target.options ? target.options.length : null;
+    }
     if (tag === "input" && (type === "checkbox" || type === "radio")) {
-      payload.checked = !!target.checked;
-      delete payload.value;
-      delete payload.value_length;
-      delete payload.value_type;
+      delete extra.value;
+      delete extra.value_length;
+      delete extra.value_type;
+      extra.checked = !!target.checked;
     }
-    push(isSelect2(target) ? "select2_change" : (tag === "select" ? "select" : "change"), target, payload);
-  };
+    push(select2 ? "select2_change" : (tag === "select" ? "select" : "change"), target, extra);
+  }, true);
 
-  const onSubmit = (event) => {
-    const target = event.target || document.activeElement || document.body;
-    push("submit", target, {});
-  };
+  document.addEventListener("submit", (event) => {
+    push("submit", event.target || document.activeElement || document.body, {});
+  }, true);
 
-  const onFocus = (event) => {
-    const target = event.target || document.activeElement || document.body;
-    push("focus", target, {});
-  };
-
-  const onBlur = (event) => {
-    const target = event.target || document.activeElement || document.body;
-    push("blur", target, {});
-  };
-
-  const onKeyDown = (event) => {
-    const key = String(event.key || "").toLowerCase();
-    if (key === "enter") {
-      const target = event.target || document.activeElement || document.body;
-      push("enter", target, {});
+  document.addEventListener("keydown", (event) => {
+    if (String(event.key || "").toLowerCase() === "enter") {
+      push("enter", event.target || document.activeElement || document.body, {});
     }
-  };
+  }, true);
 
-  const onUrlChange = () => {
+  const originalOpen = window.open;
+  try {
+    window.open = function () {
+      push("new_window_requested", document.activeElement || document.body, {
+        requested_url: String(arguments[0] || ""),
+      });
+      return originalOpen.apply(window, arguments);
+    };
+  } catch (err) {}
+
+  const wrapDialog = (name) => {
+    const original = window[name];
+    if (typeof original !== "function") return;
+    try {
+      window[name] = function () {
+        const message = String(arguments[0] || "");
+        push(name, document.activeElement || document.body, {
+          message: "[redacted]",
+          message_length: message.length,
+        });
+        return original.apply(window, arguments);
+      };
+    } catch (err) {}
+  };
+  wrapDialog("alert");
+  wrapDialog("confirm");
+  wrapDialog("prompt");
+
+  const observer = new MutationObserver(() => scanModalTransitions());
+  observer.observe(document.documentElement || document.body, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    attributeFilter: ["class", "style", "aria-hidden", "aria-modal", "open"],
+  });
+
+  recorder.flush = function () {
     if (location.href !== recorder.lastUrl) {
       recorder.lastUrl = location.href;
       push("url_changed", document.activeElement || document.body, { url: location.href });
     }
-  };
-
-  const onWindowOpen = window.open;
-  try {
-    window.open = function () {
-      push("new_window_requested", document.activeElement || document.body, { requested_url: arguments[0] || "" });
-      return onWindowOpen.apply(window, arguments);
-    };
-  } catch (err) {}
-
-  const originalAlert = window.alert;
-  const originalConfirm = window.confirm;
-  const originalPrompt = window.prompt;
-  try {
-    window.alert = function (message) {
-      push("alert", document.activeElement || document.body, { message: safeText(message) });
-      return originalAlert.apply(window, arguments);
-    };
-  } catch (err) {}
-  try {
-    window.confirm = function (message) {
-      push("confirm", document.activeElement || document.body, { message: safeText(message) });
-      return originalConfirm.apply(window, arguments);
-    };
-  } catch (err) {}
-  try {
-    window.prompt = function (message, defaultValue) {
-      push("prompt", document.activeElement || document.body, { message: safeText(message), default_value: safeText(defaultValue) });
-      return originalPrompt.apply(window, arguments);
-    };
-  } catch (err) {}
-
-  const observer = new MutationObserver((mutations) => {
-    let modalChanged = false;
-    for (const mutation of mutations) {
-      for (const node of mutation.addedNodes || []) {
-        if (!node || !node.querySelectorAll) continue;
-        const modal = node.matches && (node.matches('[role="dialog"], [aria-modal="true"], .modal.show, .swal2-container') || node.querySelector('[role="dialog"], [aria-modal="true"], .modal.show, .swal2-container'));
-        if (modal) {
-          push("element_visible", node, { mutation_type: "added" });
-          modalChanged = true;
-        }
-      }
-      for (const node of mutation.removedNodes || []) {
-        if (!node || !node.querySelectorAll) continue;
-        const modal = node.matches && (node.matches('[role="dialog"], [aria-modal="true"], .modal.show, .swal2-container') || node.querySelector('[role="dialog"], [aria-modal="true"], .modal.show, .swal2-container'));
-        if (modal) {
-          push("element_hidden", node, { mutation_type: "removed" });
-          modalChanged = true;
-        }
-      }
-    }
-    if (modalChanged) {
-      scanModalTransitions();
-    }
-  });
-
-  const install = () => {
-    document.addEventListener("click", onClick, true);
-    document.addEventListener("input", onInput, true);
-    document.addEventListener("change", onChange, true);
-    document.addEventListener("submit", onSubmit, true);
-    document.addEventListener("focus", onFocus, true);
-    document.addEventListener("blur", onBlur, true);
-    document.addEventListener("keydown", onKeyDown, true);
-    observer.observe(document.documentElement || document.body, {
-      subtree: true,
-      childList: true,
-      attributes: true,
-      attributeFilter: ["class", "style", "aria-hidden", "aria-modal", "open"],
-    });
-    scanModalTransitions();
-  };
-
-  recorder.flush = function () {
-    onUrlChange();
     scanModalTransitions();
     const out = recorder.queue.slice();
     recorder.queue.length = 0;
     return out;
   };
 
-  recorder.snapshot = function () {
-    const main = document.querySelector("main, [role='main'], #content, .content, .main") || document.body || document.documentElement;
-    const text = main ? safeText(main.innerText || main.textContent || "") : "";
-    const html = main ? (main.innerHTML || "") : "";
-    const interactive = document.querySelectorAll("input, select, textarea, button, a, [role], [contenteditable]").length;
-    return {
-      url: location.href,
-      title: document.title || "",
-      window_handle: String(window.name || ""),
-      iframe_path: getFramePath(),
-      active_tag: document.activeElement && document.activeElement.tagName ? document.activeElement.tagName.toLowerCase() : "",
-      active_id: document.activeElement && document.activeElement.getAttribute ? (document.activeElement.getAttribute("id") || "") : "",
-      active_name: document.activeElement && document.activeElement.getAttribute ? (document.activeElement.getAttribute("name") || "") : "",
-      interactive_count: interactive,
-      modal_count: modalCount(),
-      frame_count: document.querySelectorAll("iframe").length,
-      text_length: text.length,
-      html_hash: (function () {
-        let hash = 0;
-        const input = String(html || "");
-        for (let i = 0; i < input.length; i += 1) {
-          hash = ((hash << 5) - hash + input.charCodeAt(i)) | 0;
-        }
-        return String(hash >>> 0);
-      })(),
-      text_hash: (function () {
-        let hash = 0;
-        const input = String(text || "");
-        for (let i = 0; i < input.length; i += 1) {
-          hash = ((hash << 5) - hash + input.charCodeAt(i)) | 0;
-        }
-        return String(hash >>> 0);
-      })(),
-    };
+  recorder.discard = function () {
+    recorder.queue.length = 0;
+    recorder.lastUrl = location.href;
+    scanModalTransitions();
+    recorder.queue.length = 0;
+    return true;
   };
 
-  install();
+  scanModalTransitions();
   window.__SOMA_INTERACTION_RECORDER__ = recorder;
-  return recorder;
+  return true;
 })();
 """
 
@@ -425,84 +302,59 @@ def _hash_text(value: str) -> str:
     return hashlib.sha256((value or "").encode("utf-8")).hexdigest()
 
 
+def _safe_filename(value: str) -> str:
+    cleaned = "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "_" for ch in str(value or ""))
+    return cleaned.strip("._") or "record"
+
+
+def _sanitize_url(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        parts = urlsplit(raw)
+        query = []
+        for key, val in parse_qsl(parts.query, keep_blank_values=True):
+            query.append((key, "[redacted]" if _SENSITIVE_QUERY_KEYS.search(key) else val))
+        return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), ""))
+    except Exception:
+        return sanitize_text(raw)
+
+
 def collect_page_state(driver: Any) -> dict[str, Any]:
     script = """
-    const main = document.querySelector("main, [role='main'], #content, .content, .main") || document.body || document.documentElement;
+    const main = document.querySelector("main, [role='main'], #content, .content, .main")
+      || document.body || document.documentElement;
     const text = main ? (main.innerText || main.textContent || "") : "";
     const html = main ? (main.innerHTML || "") : "";
-    const interactive = Array.from(document.querySelectorAll("input, select, textarea, button, a, [role], [contenteditable]")).map((el) => {
-      const rect = el.getBoundingClientRect();
-      return [
-        (el.tagName || "").toLowerCase(),
-        el.getAttribute("id") || "",
-        el.getAttribute("name") || "",
-        el.getAttribute("type") || "",
-        el.getAttribute("role") || "",
-        el.getAttribute("aria-label") || "",
-        Math.round(rect.x || 0),
-        Math.round(rect.y || 0)
-      ].join(":");
-    }).join("|");
-    const modalCount = document.querySelectorAll('[role="dialog"], [aria-modal="true"], .modal.show, .swal2-container').length;
     return {
       url: location.href,
       title: document.title || "",
-      window_handle: String(window.name || ""),
-      iframe_path: (function () {
-        const parts = [];
-        let win = window;
-        let depth = 0;
-        while (win && win !== win.top && depth < 8) {
-          const frame = win.frameElement;
-          if (!frame) break;
-          const id = frame.getAttribute("id") || frame.getAttribute("name");
-          if (id) {
-            parts.unshift(id);
-          } else {
-            let index = 1;
-            let sib = frame.previousElementSibling;
-            while (sib) {
-              if ((sib.tagName || "").toLowerCase() === "iframe") index += 1;
-              sib = sib.previousElementSibling;
-            }
-            parts.unshift(`iframe[${index}]`);
-          }
-          try {
-            win = win.parent;
-          } catch (err) {
-            break;
-          }
-          depth += 1;
-        }
-        return parts.length ? `top/${parts.join("/")}` : "top";
-      })(),
-      active_tag: document.activeElement && document.activeElement.tagName ? document.activeElement.tagName.toLowerCase() : "",
-      active_id: document.activeElement && document.activeElement.getAttribute ? (document.activeElement.getAttribute("id") || "") : "",
-      active_name: document.activeElement && document.activeElement.getAttribute ? (document.activeElement.getAttribute("name") || "") : "",
-      interactive_count: document.querySelectorAll("input, select, textarea, button, a, [role], [contenteditable]").length,
-      modal_count: modalCount,
+      interactive_count: document.querySelectorAll(
+        "input, select, textarea, button, a, [role], [contenteditable]"
+      ).length,
+      modal_count: document.querySelectorAll(
+        '[role="dialog"], [aria-modal="true"], .modal.show, .swal2-container'
+      ).length,
       frame_count: document.querySelectorAll("iframe").length,
-      text_length: (text || "").length,
-      html_hash: (function () {
-        let hash = 0;
-        const input = String(html || "");
-        for (let i = 0; i < input.length; i += 1) {
-          hash = ((hash << 5) - hash + input.charCodeAt(i)) | 0;
-        }
-        return String(hash >>> 0);
-      })(),
-      text_hash: (function () {
-        let hash = 0;
-        const input = String(text || "");
-        for (let i = 0; i < input.length; i += 1) {
-          hash = ((hash << 5) - hash + input.charCodeAt(i)) | 0;
-        }
-        return String(hash >>> 0);
-      })(),
+      text_hash: String(Array.from(text).reduce((a, c) => ((a << 5) - a + c.charCodeAt(0)) | 0, 0) >>> 0),
+      html_hash: String(Array.from(html).reduce((a, c) => ((a << 5) - a + c.charCodeAt(0)) | 0, 0) >>> 0),
       alerts_count: 0
     };
     """
-    return driver.execute_script(script) or {}
+    state = driver.execute_script(script) or {}
+    try:
+        handles = list(driver.window_handles)
+        handle = str(driver.current_window_handle)
+        state["window_handle"] = handle
+        state["window_index"] = handles.index(handle) if handle in handles else 0
+    except Exception:
+        state.setdefault("window_handle", "")
+        state.setdefault("window_index", 0)
+    state.setdefault("iframe_path", "top")
+    state["url"] = _sanitize_url(state.get("url", ""))
+    state["title"] = sanitize_text(state.get("title", ""))
+    return state
 
 
 def page_state_signature(state: Mapping[str, Any]) -> str:
@@ -511,6 +363,7 @@ def page_state_signature(state: Mapping[str, Any]) -> str:
             normalize_url(str(state.get("url", ""))),
             sanitize_text(state.get("title", "")),
             str(state.get("window_handle", "")),
+            str(state.get("window_index", 0)),
             str(state.get("iframe_path", "")),
             str(state.get("interactive_count", 0)),
             str(state.get("modal_count", 0)),
@@ -523,26 +376,34 @@ def page_state_signature(state: Mapping[str, Any]) -> str:
     return _hash_text(payload)
 
 
-def sanitize_record_value(action: str, value: Any = None, *, value_length: int | None = None, value_type: str = "text", checked: bool | None = None, selected_index: int | None = None, option_count: int | None = None) -> dict[str, Any]:
+def sanitize_record_value(
+    action: str,
+    value: Any = None,
+    *,
+    value_length: int | None = None,
+    value_type: str = "text",
+    checked: bool | None = None,
+    selected_index: int | None = None,
+    option_count: int | None = None,
+) -> dict[str, Any]:
     action_norm = normalize_text(action)
-    payload: dict[str, Any] = {}
-    if checked is not None or action_norm in {"click", "change", "input"} and value_type in {"checkbox", "radio"}:
-        payload["checked"] = bool(checked)
-        return payload
+    if checked is not None or (
+        action_norm in {"click", "change", "input"} and value_type in {"checkbox", "radio"}
+    ):
+        return {"checked": bool(checked)}
 
-    if action_norm in {"select", "select2_choose", "input", "change"}:
+    payload: dict[str, Any] = {}
+    if action_norm in {"select", "select2_choose", "input", "change", "select2_input", "select2_change"}:
         payload["value"] = "[redacted]"
         if value_length is not None:
-            payload["value_length"] = int(value_length)
+            payload["value_length"] = max(0, int(value_length))
         if value_type:
             payload["value_type"] = str(value_type)
         if selected_index is not None:
             payload["selected_index"] = int(selected_index)
         if option_count is not None:
-            payload["option_count"] = int(option_count)
-        return payload
-
-    if value is not None:
+            payload["option_count"] = max(0, int(option_count))
+    elif value is not None:
         payload["value"] = "[redacted]"
     return payload
 
@@ -553,41 +414,48 @@ def _event_key(event: Mapping[str, Any]) -> tuple[str, str, str, str, str]:
         normalize_text(event.get("page_url")),
         normalize_text(event.get("window_handle")),
         normalize_text(event.get("iframe_path")),
-        normalize_text(event.get("id") or event.get("name") or event.get("label") or event.get("aria_label") or event.get("css_selector") or event.get("relative_xpath") or event.get("absolute_xpath")),
+        normalize_text(
+            event.get("id")
+            or event.get("name")
+            or event.get("label")
+            or event.get("aria_label")
+            or event.get("css_selector")
+            or event.get("relative_xpath")
+            or event.get("absolute_xpath")
+        ),
     )
 
 
-def _is_input_like(event: Mapping[str, Any]) -> bool:
-    return normalize_text(event.get("action")) in {"input", "change", "select", "select2_input", "select2_change", "select2_choose"}
+def _event_timestamp(event: Mapping[str, Any], fallback: float = 0.0) -> float:
+    try:
+        return datetime.fromisoformat(str(event.get("timestamp") or "").replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return fallback
 
 
-def dedupe_input_events(events: Sequence[Mapping[str, Any]], *, max_gap_seconds: float = 0.8) -> list[dict[str, Any]]:
+def dedupe_input_events(
+    events: Sequence[Mapping[str, Any]],
+    *,
+    max_gap_seconds: float = 0.8,
+) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    last_input_index: dict[tuple[str, str, str, str, str], int] = {}
-    last_seen_ts: dict[tuple[str, str, str, str, str], float] = {}
-
+    last_index: dict[tuple[str, str, str, str, str], int] = {}
+    last_ts: dict[tuple[str, str, str, str, str], float] = {}
     for event in events:
         item = dict(event)
-        action = normalize_text(item.get("action"))
-        if action not in {"input", "select2_input"}:
+        if normalize_text(item.get("action")) not in {"input", "select2_input"}:
             out.append(item)
             continue
-
         key = _event_key(item)
-        ts_raw = str(item.get("timestamp") or "")
-        try:
-            ts = datetime.fromisoformat(ts_raw.replace("Z", "+00:00")).timestamp()
-        except Exception:
-            ts = float(len(out))
-
-        prev_index = last_input_index.get(key)
-        prev_ts = last_seen_ts.get(key)
-        if prev_index is not None and prev_ts is not None and ts - prev_ts <= max_gap_seconds:
-            out[prev_index] = item
+        ts = _event_timestamp(item, float(len(out)))
+        prev_idx = last_index.get(key)
+        prev_ts = last_ts.get(key)
+        if prev_idx is not None and prev_ts is not None and ts - prev_ts <= max_gap_seconds:
+            out[prev_idx] = item
         else:
-            last_input_index[key] = len(out)
+            last_index[key] = len(out)
             out.append(item)
-        last_seen_ts[key] = ts
+        last_ts[key] = ts
     return out
 
 
@@ -600,18 +468,22 @@ def consolidate_select2_events(events: Sequence[Mapping[str, Any]]) -> list[dict
         nonlocal buffer, buffer_key
         if not buffer:
             return
-        first = buffer[0]
-        last = buffer[-1]
+        first, last = buffer[0], buffer[-1]
         merged = dict(last)
         merged["action"] = "select2_choose"
         merged["field"] = first.get("field") or first.get("label") or first.get("name") or first.get("id") or ""
         merged["wait_condition"] = merged.get("wait_condition") or "element_value_changed|modal_hidden|dom_changed"
         merged["selected_value"] = "[redacted]"
-        merged["result_selector"] = last.get("css_selector") or last.get("relative_xpath") or last.get("absolute_xpath") or ""
-        merged["search_selector"] = next((item.get("css_selector") or item.get("relative_xpath") or "" for item in buffer if normalize_text(item.get("action")) in {"input", "select2_input"}), "")
         merged["opener_selector"] = first.get("css_selector") or first.get("relative_xpath") or first.get("absolute_xpath") or ""
-        if any(normalize_text(item.get("action")) == "change" for item in buffer):
-            merged["action"] = "select2_choose"
+        merged["search_selector"] = next(
+            (
+                item.get("css_selector") or item.get("relative_xpath") or ""
+                for item in buffer
+                if normalize_text(item.get("action")) in {"input", "select2_input"}
+            ),
+            "",
+        )
+        merged["result_selector"] = last.get("css_selector") or last.get("relative_xpath") or last.get("absolute_xpath") or ""
         out.append(merged)
         buffer = []
         buffer_key = None
@@ -624,28 +496,54 @@ def consolidate_select2_events(events: Sequence[Mapping[str, Any]]) -> list[dict
                 normalize_text(item.get("window_handle")),
                 normalize_text(item.get("iframe_path")),
             )
-            if buffer_key is None:
+            if buffer_key is None or key == buffer_key:
                 buffer_key = key
-                buffer.append(item)
-                continue
-            if key == buffer_key:
                 buffer.append(item)
                 continue
             flush()
             buffer_key = key
             buffer.append(item)
             continue
-
         flush()
         out.append(item)
-
     flush()
     return out
 
 
+def dedupe_state_events(
+    events: Sequence[Mapping[str, Any]],
+    *,
+    max_gap_seconds: float = 1.0,
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    last_by_key: dict[tuple[str, str, str, str, str], tuple[int, float]] = {}
+    for event in events:
+        item = dict(event)
+        action = normalize_text(item.get("action"))
+        if action not in _STATE_ACTIONS:
+            out.append(item)
+            continue
+        key = (
+            action,
+            normalize_text(item.get("window_handle")),
+            normalize_text(item.get("iframe_path")),
+            normalize_text(item.get("before_signature")),
+            normalize_text(item.get("after_signature")),
+        )
+        ts = _event_timestamp(item, float(len(out)))
+        previous = last_by_key.get(key)
+        if previous and ts - previous[1] <= max_gap_seconds:
+            out[previous[0]] = item
+            last_by_key[key] = (previous[0], ts)
+            continue
+        last_by_key[key] = (len(out), ts)
+        out.append(item)
+    return out
+
+
 def consolidate_events(events: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
-    deduped = dedupe_input_events(events)
-    consolidated = consolidate_select2_events(deduped)
+    consolidated = consolidate_select2_events(dedupe_input_events(events))
+    consolidated = dedupe_state_events(consolidated)
     final: list[dict[str, Any]] = []
     previous: dict[str, Any] | None = None
     for event in consolidated:
@@ -664,7 +562,10 @@ def suggest_wait_condition(before: Mapping[str, Any], after: Mapping[str, Any]) 
     conditions: list[str] = []
     if normalize_url(str(before.get("url", ""))) != normalize_url(str(after.get("url", ""))):
         conditions.append("url_changed")
-    if str(before.get("window_handle", "")) != str(after.get("window_handle", "")) or int(before.get("window_index", 0) or 0) != int(after.get("window_index", 0) or 0):
+    if (
+        str(before.get("window_handle", "")) != str(after.get("window_handle", ""))
+        or int(before.get("window_index", 0) or 0) != int(after.get("window_index", 0) or 0)
+    ):
         conditions.append("window_changed")
     if str(before.get("iframe_path", "")) != str(after.get("iframe_path", "")):
         conditions.append("iframe_changed")
@@ -674,14 +575,20 @@ def suggest_wait_condition(before: Mapping[str, Any], after: Mapping[str, Any]) 
         conditions.append("modal_hidden")
     if int(before.get("interactive_count", 0) or 0) != int(after.get("interactive_count", 0) or 0):
         conditions.append("element_count_changed")
-    if str(before.get("html_hash", "")) != str(after.get("html_hash", "")) or str(before.get("text_hash", "")) != str(after.get("text_hash", "")):
+    if (
+        str(before.get("html_hash", "")) != str(after.get("html_hash", ""))
+        or str(before.get("text_hash", "")) != str(after.get("text_hash", ""))
+    ):
         conditions.append("dom_changed")
     if int(before.get("value_length", -1) or -1) != int(after.get("value_length", -1) or -1):
         conditions.append("element_value_changed")
     return "|".join(conditions) if conditions else "dom_changed"
 
 
-def build_selector_candidate_payload(driver: Any, event: Mapping[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+def build_selector_candidate_payload(
+    driver: Any,
+    event: Mapping[str, Any],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     element = {
         "tag": sanitize_text(event.get("tag")),
         "type": sanitize_text(event.get("type")),
@@ -693,7 +600,11 @@ def build_selector_candidate_payload(driver: Any, event: Mapping[str, Any]) -> t
         "aria_label": sanitize_text(event.get("aria_label")),
         "placeholder": sanitize_text(event.get("placeholder")),
         "text": sanitize_text(event.get("text")),
-        "data_attrs": sanitize_json_value(event.get("data_attrs") or {}),
+        "data_attrs": {
+            str(k): sanitize_text(v)
+            for k, v in dict(event.get("data_attrs") or {}).items()
+            if str(k) in _ALLOWED_DATA_ATTRS
+        },
     }
     candidates = selector_candidates_for_element(element, label_text=element.get("label", ""))
     payload: list[dict[str, Any]] = []
@@ -701,7 +612,7 @@ def build_selector_candidate_payload(driver: Any, event: Mapping[str, Any]) -> t
     for candidate in candidates:
         if driver is not None:
             validation = validate_selector(driver, candidate)
-            payload_item = {
+            item = {
                 "strategy": candidate.strategy,
                 "by": candidate.by,
                 "selector": candidate.selector,
@@ -711,7 +622,7 @@ def build_selector_candidate_payload(driver: Any, event: Mapping[str, Any]) -> t
                 "reason": validation.reason,
             }
         else:
-            payload_item = {
+            item = {
                 "strategy": candidate.strategy,
                 "by": candidate.by,
                 "selector": candidate.selector,
@@ -720,17 +631,23 @@ def build_selector_candidate_payload(driver: Any, event: Mapping[str, Any]) -> t
                 "score": candidate.score,
                 "reason": candidate.reason,
             }
-        payload.append(payload_item)
+        payload.append(item)
         if recommended is None:
-            recommended = payload_item
-        elif bool(payload_item["unique"]) and not bool(recommended["unique"]):
-            recommended = payload_item
-        elif bool(payload_item["unique"]) == bool(recommended["unique"]) and float(payload_item["score"]) > float(recommended["score"]):
-            recommended = payload_item
+            recommended = item
+        elif bool(item["unique"]) and not bool(recommended["unique"]):
+            recommended = item
+        elif bool(item["unique"]) == bool(recommended["unique"]) and float(item["score"]) > float(recommended["score"]):
+            recommended = item
     return payload, recommended or {}
 
 
-def event_to_step(event: Mapping[str, Any], *, step_number: int, before_state: Mapping[str, Any], after_state: Mapping[str, Any]) -> dict[str, Any]:
+def event_to_step(
+    event: Mapping[str, Any],
+    *,
+    step_number: int,
+    before_state: Mapping[str, Any],
+    after_state: Mapping[str, Any],
+) -> dict[str, Any]:
     element = {
         "tag": sanitize_text(event.get("tag")),
         "type": sanitize_text(event.get("type")),
@@ -746,29 +663,35 @@ def event_to_step(event: Mapping[str, Any], *, step_number: int, before_state: M
     }
     css_selector = css_selector_for_element(element)
     relative_xpath = xpath_relative_for_element(element, label_text=element.get("label", ""))
-    absolute_xpath = sanitize_text(event.get("absolute_xpath")) or relative_xpath
     candidates = sanitize_json_value(event.get("selector_candidates") or [])
     recommended = sanitize_json_value(event.get("selector_recommended") or {})
     if not candidates:
-        generated_candidates = selector_candidates_for_element(element, label_text=element.get("label", ""))
+        generated = selector_candidates_for_element(element, label_text=element.get("label", ""))
         candidates = [
             {
-                "strategy": candidate.strategy,
-                "by": candidate.by,
-                "selector": candidate.selector,
+                "strategy": item.strategy,
+                "by": item.by,
+                "selector": item.selector,
                 "count": 0,
                 "unique": False,
-                "score": candidate.score,
-                "reason": candidate.reason,
+                "score": item.score,
+                "reason": item.reason,
             }
-            for candidate in generated_candidates
+            for item in generated
         ]
         recommended = candidates[0] if candidates else {}
 
-    value_payload = {}
+    value_payload: dict[str, Any] = {}
     if "checked" in event:
         value_payload = {"checked": bool(event.get("checked"))}
-    elif normalize_text(event.get("action")) in {"input", "change", "select", "select2_choose"}:
+    elif normalize_text(event.get("action")) in {
+        "input",
+        "change",
+        "select",
+        "select2_choose",
+        "select2_input",
+        "select2_change",
+    }:
         value_payload = sanitize_record_value(
             str(event.get("action")),
             value=event.get("value"),
@@ -777,14 +700,12 @@ def event_to_step(event: Mapping[str, Any], *, step_number: int, before_state: M
             selected_index=int(event.get("selected_index")) if event.get("selected_index") is not None else None,
             option_count=int(event.get("option_count")) if event.get("option_count") is not None else None,
         )
-        value_payload.setdefault("value", "[redacted]")
 
-    wait_condition = str(event.get("wait_condition") or "").strip() or suggest_wait_condition(before_state, after_state)
     step = {
         "step_number": step_number,
         "timestamp": sanitize_text(event.get("timestamp")),
         "action": sanitize_text(event.get("action")),
-        "page_url": sanitize_text(event.get("page_url")),
+        "page_url": _sanitize_url(event.get("page_url")),
         "page_title": sanitize_text(event.get("page_title")),
         "window_index": int(event.get("window_index") or 0),
         "window_handle": sanitize_text(event.get("window_handle")),
@@ -801,82 +722,116 @@ def event_to_step(event: Mapping[str, Any], *, step_number: int, before_state: M
         "text": element["text"],
         "css_selector": css_selector,
         "relative_xpath": relative_xpath,
-        "absolute_xpath": absolute_xpath,
+        "absolute_xpath": sanitize_text(event.get("absolute_xpath")) or relative_xpath,
         "selector_candidates": candidates,
         "selector_recommended": recommended,
         "before_signature": sanitize_text(event.get("before_signature") or page_state_signature(before_state)),
         "after_signature": sanitize_text(event.get("after_signature") or page_state_signature(after_state)),
-        "wait_condition": wait_condition,
+        "wait_condition": str(event.get("wait_condition") or "").strip()
+        or suggest_wait_condition(before_state, after_state),
     }
     step.update(value_payload)
     if normalize_text(step["action"]) == "select2_choose":
-        step.setdefault("field", sanitize_text(event.get("field") or element["label"] or element["name"] or element["id"]))
-        step.setdefault("opener_selector", sanitize_text(event.get("opener_selector") or css_selector))
-        step.setdefault("search_selector", sanitize_text(event.get("search_selector") or ""))
-        step.setdefault("result_selector", sanitize_text(event.get("result_selector") or css_selector))
+        step["field"] = sanitize_text(event.get("field") or element["label"] or element["name"] or element["id"])
+        step["opener_selector"] = sanitize_text(event.get("opener_selector") or css_selector)
+        step["search_selector"] = sanitize_text(event.get("search_selector") or "")
+        step["result_selector"] = sanitize_text(event.get("result_selector") or css_selector)
     return sanitize_json_value(step)
 
 
 def build_workflow_summary(process_name: str, steps: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    page_urls = []
-    windows = []
-    iframes = []
-    fields = []
-    buttons = []
-    selectors = set()
-    fragile = 0
-    wait_conditions = set()
-    for step in steps:
-        page_urls.append(str(step.get("page_url", "")))
-        windows.append((step.get("window_index"), step.get("window_handle")))
-        iframes.append(str(step.get("iframe_path", "")))
-        if step.get("field"):
-            fields.append(str(step.get("field")))
-        action = normalize_text(step.get("action"))
-        if action in {"click", "submit", "enter"}:
-            buttons.append(str(step.get("label") or step.get("text") or step.get("css_selector") or step.get("relative_xpath") or ""))
-        css = str(step.get("css_selector") or "")
-        rel = str(step.get("relative_xpath") or "")
-        abs_x = str(step.get("absolute_xpath") or "")
-        for selector in (css, rel, abs_x):
-            if selector:
-                selectors.add(selector)
-        candidates = step.get("selector_candidates") or []
-        for candidate in candidates:
-            try:
-                if not bool(candidate.get("unique")) or float(candidate.get("score") or 0.0) < 60:
-                    fragile += 1
-                wait_conditions.add(str(candidate.get("reason") or ""))
-            except Exception:
-                continue
-        wait_condition = str(step.get("wait_condition") or "")
-        if wait_condition:
-            wait_conditions.add(wait_condition)
-
-    pages_visited = sorted({normalize_url(url) for url in page_urls if url})
-    windows_used = sorted({f"{idx}:{handle}" for idx, handle in windows if handle})
-    iframes_used = sorted({iframe for iframe in iframes if iframe})
-    fields_used = sorted({normalize_text(field) for field in fields if field})
-    buttons_clicked = sorted({normalize_text(button) for button in buttons if button})
-
+    pages = sorted({_sanitize_url(step.get("page_url")) for step in steps if step.get("page_url")})
+    windows = sorted(
+        {
+            f"{int(step.get('window_index') or 0)}:{step.get('window_handle')}"
+            for step in steps
+            if step.get("window_handle")
+        }
+    )
+    iframes = sorted({str(step.get("iframe_path") or "top") for step in steps})
+    fields = sorted(
+        {
+            normalize_text(step.get("field") or step.get("label") or step.get("name"))
+            for step in steps
+            if step.get("field") or step.get("label") or step.get("name")
+        }
+    )
+    buttons = sorted(
+        {
+            normalize_text(
+                step.get("label")
+                or step.get("text")
+                or step.get("css_selector")
+                or step.get("relative_xpath")
+            )
+            for step in steps
+            if normalize_text(step.get("action")) in {"click", "submit", "enter"}
+        }
+    )
+    selectors = sorted(
+        {
+            str(selector)
+            for step in steps
+            for selector in (
+                step.get("css_selector"),
+                step.get("relative_xpath"),
+                step.get("absolute_xpath"),
+            )
+            if selector
+        }
+    )
+    fragile = sum(
+        1
+        for step in steps
+        for candidate in (step.get("selector_candidates") or [])
+        if not bool(candidate.get("unique")) or float(candidate.get("score") or 0.0) < 60
+    )
+    waits = sorted(
+        {
+            part
+            for step in steps
+            for part in str(step.get("wait_condition") or "").split("|")
+            if part
+        }
+    )
     return {
         "process_name": process_name,
         "generated_at": utc_now_iso(),
         "step_count": len(steps),
-        "pages_visited": pages_visited,
-        "windows_used": windows_used,
-        "iframes_used": iframes_used,
-        "fields_filled": fields_used,
-        "buttons_clicked": buttons_clicked,
-        "unique_selectors": sorted(selectors),
+        "pages_visited": pages,
+        "windows_used": windows,
+        "iframes_used": iframes,
+        "fields_filled": fields,
+        "buttons_clicked": buttons,
+        "unique_selectors": selectors,
         "fragile_selectors": fragile,
-        "wait_conditions_suggested": sorted({cond for cond in wait_conditions if cond}),
+        "wait_conditions_suggested": waits,
     }
 
 
 def _sanitize_raw_event(event: Mapping[str, Any]) -> dict[str, Any]:
     item = dict(event)
     action = normalize_text(item.get("action"))
+    item.pop("form_text", None)
+    item.pop("outer_html", None)
+    item["page_url"] = _sanitize_url(item.get("page_url"))
+    if "requested_url" in item:
+        item["requested_url"] = _sanitize_url(item.get("requested_url"))
+    if action in {"alert", "confirm", "prompt"}:
+        message = str(item.get("message") or "")
+        item["message"] = "[redacted]"
+        item["message_length"] = int(item.get("message_length") or len(message))
+        item.pop("default_value", None)
+    tag = normalize_text(item.get("tag"))
+    if tag not in _TEXT_TAGS:
+        item["text"] = ""
+    else:
+        item["text"] = sanitize_text(item.get("text"), max_len=120)
+    item["data_attrs"] = {
+        str(k): sanitize_text(v)
+        for k, v in dict(item.get("data_attrs") or {}).items()
+        if str(k) in _ALLOWED_DATA_ATTRS
+    }
     if action in {"input", "change", "select", "select2_input", "select2_change", "select2_choose"}:
         item.update(
             sanitize_record_value(
@@ -889,7 +844,7 @@ def _sanitize_raw_event(event: Mapping[str, Any]) -> dict[str, Any]:
                 option_count=int(item.get("option_count")) if item.get("option_count") is not None else None,
             )
         )
-    elif action in {"click", "submit", "focus", "blur", "marker", "checkpoint", "pause", "resume", "modal_visible", "modal_hidden", "element_visible", "element_hidden", "url_changed", "new_window_requested", "alert", "confirm", "prompt", "enter"}:
+    else:
         item.pop("value", None)
     return sanitize_json_value(item)
 
@@ -908,8 +863,8 @@ class InteractionRecorder:
     page_snapshots: list[dict[str, Any]] = field(default_factory=list)
     _last_state_by_context: dict[str, dict[str, Any]] = field(default_factory=dict)
     _seen_signatures: set[str] = field(default_factory=set)
-    _step_number: int = 0
     _last_page_signature: str = ""
+    _known_window_handles: set[str] = field(default_factory=set)
 
     def __post_init__(self) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
@@ -917,23 +872,35 @@ class InteractionRecorder:
         self.dom_dir = self.root / "dom"
         self.screenshots_dir.mkdir(parents=True, exist_ok=True)
         self.dom_dir.mkdir(parents=True, exist_ok=True)
+        self.safe_process_name = _safe_filename(self.process_name)
+        self.dom_inventory.capture_hidden = bool(self.capture_hidden)
 
     def install(self, driver: Any) -> None:
-        self._inject_context(driver)
+        self._visit_all_windows(driver, self._install_current_tree)
 
-    def _inject_context(self, driver: Any) -> None:
+    def _install_current_tree(self, driver: Any, frame_path: str = "top") -> None:
         try:
-            driver.execute_script(DEFAULT_INTERACTION_SCRIPT)
+            installed = bool(
+                driver.execute_script(
+                    "return !!(window.__SOMA_INTERACTION_RECORDER__ "
+                    "&& window.__SOMA_INTERACTION_RECORDER__.installed);"
+                )
+            )
         except Exception:
-            pass
+            installed = False
+        if not installed:
+            try:
+                driver.execute_script(DEFAULT_INTERACTION_SCRIPT)
+            except Exception:
+                return
         try:
-            iframe_elements = driver.find_elements(By.TAG_NAME, "iframe")
+            frames = driver.find_elements(By.TAG_NAME, "iframe")
         except Exception:
             return
-        for iframe in iframe_elements:
+        for index, frame in enumerate(frames):
             try:
-                driver.switch_to.frame(iframe)
-                self._inject_context(driver)
+                driver.switch_to.frame(frame)
+                self._install_current_tree(driver, f"{frame_path}/{index}")
             except Exception:
                 continue
             finally:
@@ -942,32 +909,122 @@ class InteractionRecorder:
                 except Exception:
                     pass
 
-    def _collect_context_events(self, driver: Any, frame_path: str = "top") -> list[dict[str, Any]]:
-        events: list[dict[str, Any]] = []
+    def _visit_all_windows(self, driver: Any, callback: Any) -> None:
         try:
-            raw = driver.execute_script(
+            original = driver.current_window_handle
+        except Exception:
+            original = ""
+        try:
+            handles = list(driver.window_handles)
+        except Exception:
+            handles = []
+        for handle in handles:
+            try:
+                driver.switch_to.window(handle)
+                callback(driver)
+            except Exception:
+                continue
+        if original and original in handles:
+            try:
+                driver.switch_to.window(original)
+            except Exception:
+                pass
+
+    def _discard_current_tree(self, driver: Any) -> None:
+        self._install_current_tree(driver)
+        self._discard_current_context(driver)
+        try:
+            frames = driver.find_elements(By.TAG_NAME, "iframe")
+        except Exception:
+            return
+        for frame in frames:
+            try:
+                driver.switch_to.frame(frame)
+                self._discard_current_tree(driver)
+            except Exception:
+                continue
+            finally:
+                try:
+                    driver.switch_to.parent_frame()
+                except Exception:
+                    pass
+
+    @staticmethod
+    def _discard_current_context(driver: Any) -> None:
+        try:
+            driver.execute_script(
                 """
                 const rec = window.__SOMA_INTERACTION_RECORDER__;
-                return rec && rec.flush ? rec.flush() : [];
+                if (rec && rec.discard) rec.discard();
+                return true;
                 """
             )
-            for item in raw or []:
-                event = dict(item)
-                event["iframe_path"] = frame_path
-                events.append(_sanitize_raw_event(event))
         except Exception:
             pass
 
+    def _collect_current_tree(
+        self,
+        driver: Any,
+        *,
+        window_handle: str,
+        window_index: int,
+        frame_path: str = "top",
+        discard: bool = False,
+    ) -> list[dict[str, Any]]:
+        self._install_current_tree(driver, frame_path)
+        events: list[dict[str, Any]] = []
+        if discard:
+            self._discard_current_context(driver)
+        else:
+            try:
+                raw = driver.execute_script(
+                    """
+                    const rec = window.__SOMA_INTERACTION_RECORDER__;
+                    return rec && rec.flush ? rec.flush() : [];
+                    """
+                )
+            except Exception:
+                raw = []
+            state = collect_page_state(driver)
+            state["window_handle"] = window_handle
+            state["window_index"] = window_index
+            state["iframe_path"] = frame_path
+            context_key = f"{window_handle}|{frame_path}"
+            before_state = self._last_state_by_context.get(context_key, state)
+            for raw_event in raw or []:
+                item = dict(raw_event)
+                item["window_handle"] = window_handle
+                item["window_index"] = window_index
+                item["iframe_path"] = frame_path
+                item["page_url"] = state.get("url", item.get("page_url", ""))
+                item["page_title"] = state.get("title", item.get("page_title", ""))
+                item["before_signature"] = page_state_signature(before_state)
+                item["after_signature"] = page_state_signature(state)
+                item["wait_condition"] = suggest_wait_condition(before_state, state)
+                candidates, recommended = build_selector_candidate_payload(driver, item)
+                item["selector_candidates"] = candidates
+                item["selector_recommended"] = recommended
+                events.append(_sanitize_raw_event(item))
+                before_state = state
+            self._last_state_by_context[context_key] = dict(state)
+
         try:
-            iframe_elements = driver.find_elements(By.TAG_NAME, "iframe")
+            frames = driver.find_elements(By.TAG_NAME, "iframe")
         except Exception:
             return events
-
-        for index, iframe in enumerate(iframe_elements):
+        for index, frame in enumerate(frames):
             child_path = f"{frame_path}/{index}"
             try:
-                driver.switch_to.frame(iframe)
-                events.extend(self._collect_context_events(driver, child_path))
+                driver.switch_to.frame(frame)
+                events.extend(
+                    self._collect_current_tree(
+                        driver,
+                        window_handle=window_handle,
+                        window_index=window_index,
+                        frame_path=child_path,
+                        discard=discard,
+                    )
+                )
             except Exception:
                 continue
             finally:
@@ -977,9 +1034,72 @@ class InteractionRecorder:
                     pass
         return events
 
+    def _collect_all_windows(self, driver: Any, *, discard: bool = False) -> list[dict[str, Any]]:
+        events: list[dict[str, Any]] = []
+        try:
+            original = driver.current_window_handle
+        except Exception:
+            original = ""
+        try:
+            handles = list(driver.window_handles)
+        except Exception:
+            handles = []
+
+        current_handles = set(handles)
+        new_handles = current_handles - self._known_window_handles
+        closed_handles = self._known_window_handles - current_handles
+        now = utc_now_iso()
+        for handle in sorted(new_handles):
+            events.append(
+                {
+                    "action": "new_window",
+                    "timestamp": now,
+                    "window_handle": handle,
+                    "window_index": handles.index(handle),
+                    "iframe_path": "top",
+                    "before_signature": "",
+                    "after_signature": "",
+                    "wait_condition": "new_window",
+                }
+            )
+        for handle in sorted(closed_handles):
+            events.append(
+                {
+                    "action": "window_closed",
+                    "timestamp": now,
+                    "window_handle": handle,
+                    "window_index": 0,
+                    "iframe_path": "top",
+                    "before_signature": "",
+                    "after_signature": "",
+                    "wait_condition": "window_changed",
+                }
+            )
+        self._known_window_handles = current_handles
+
+        for index, handle in enumerate(handles):
+            try:
+                driver.switch_to.window(handle)
+                events.extend(
+                    self._collect_current_tree(
+                        driver,
+                        window_handle=handle,
+                        window_index=index,
+                        discard=discard,
+                    )
+                )
+            except Exception:
+                continue
+        if original and original in handles:
+            try:
+                driver.switch_to.window(original)
+            except Exception:
+                pass
+        return [] if discard else [_sanitize_raw_event(event) for event in events]
+
     def _capture_snapshot(self, driver: Any, reason: str) -> PageSnapshot | None:
         try:
-            page_id = f"{self.process_name}_{len(self.page_snapshots) + 1:04d}"
+            page_id = f"{self.safe_process_name}_{len(self.page_snapshots) + 1:04d}"
             screenshot_path = str(self.screenshots_dir / f"{page_id}.png")
             try:
                 driver.save_screenshot(screenshot_path)
@@ -995,75 +1115,79 @@ class InteractionRecorder:
                 return None
             self._seen_signatures.add(snapshot.signature)
             if hasattr(self.site_recorder, "save_page"):
-                try:
-                    self.site_recorder.save_page(snapshot)
-                except Exception:
-                    pass
+                self.site_recorder.save_page(snapshot)
             self.page_snapshots.append(snapshot.to_dict())
-            log_kv(log, "Snapshot gravado.", level=logging.INFO, reason=reason, signature=snapshot.signature, page=snapshot.url)
+            log_kv(
+                log,
+                "Snapshot gravado.",
+                level=logging.INFO,
+                reason=reason,
+                signature=snapshot.signature,
+                page=snapshot.url,
+            )
             return snapshot
         except Exception as exc:
-            log.debug("Falha a gravar snapshot: %s", exc)
+            log.warning("Falha a gravar snapshot: %s", exc)
             return None
 
     def capture_checkpoint(self, driver: Any, label: str) -> dict[str, Any]:
         state = collect_page_state(driver)
         snapshot = self._capture_snapshot(driver, reason=label)
-        payload = {
-            "action": "checkpoint",
-            "label": sanitize_text(label),
-            "timestamp": utc_now_iso(),
-            "page_url": sanitize_text(state.get("url", "")),
-            "page_title": sanitize_text(state.get("title", "")),
-            "window_index": 0,
-            "window_handle": sanitize_text(state.get("window_handle", "")),
-            "iframe_path": sanitize_text(state.get("iframe_path", "top")),
-            "before_signature": page_state_signature(state),
-            "after_signature": snapshot.signature if snapshot else page_state_signature(state),
-        }
+        payload = _sanitize_raw_event(
+            {
+                "action": "checkpoint",
+                "label": sanitize_text(label),
+                "timestamp": utc_now_iso(),
+                "page_url": state.get("url", ""),
+                "page_title": state.get("title", ""),
+                "window_index": state.get("window_index", 0),
+                "window_handle": state.get("window_handle", ""),
+                "iframe_path": "top",
+                "before_signature": page_state_signature(state),
+                "after_signature": snapshot.signature if snapshot else page_state_signature(state),
+            }
+        )
         self.raw_events.append(payload)
         return payload
 
     def record_marker(self, driver: Any, label: str) -> dict[str, Any]:
         state = collect_page_state(driver)
-        payload = {
-            "action": "marker",
-            "label": sanitize_text(label),
-            "timestamp": utc_now_iso(),
-            "page_url": sanitize_text(state.get("url", "")),
-            "page_title": sanitize_text(state.get("title", "")),
-            "window_index": 0,
-            "window_handle": sanitize_text(state.get("window_handle", "")),
-            "iframe_path": sanitize_text(state.get("iframe_path", "top")),
-            "before_signature": page_state_signature(state),
-            "after_signature": page_state_signature(state),
-        }
+        payload = _sanitize_raw_event(
+            {
+                "action": "marker",
+                "label": sanitize_text(label),
+                "timestamp": utc_now_iso(),
+                "page_url": state.get("url", ""),
+                "page_title": state.get("title", ""),
+                "window_index": state.get("window_index", 0),
+                "window_handle": state.get("window_handle", ""),
+                "iframe_path": "top",
+                "before_signature": page_state_signature(state),
+                "after_signature": page_state_signature(state),
+            }
+        )
         self.raw_events.append(payload)
         return payload
 
     def pause(self, driver: Any | None = None) -> None:
+        if driver is not None:
+            self._collect_all_windows(driver, discard=True)
         self.paused = True
         if driver is not None:
-            try:
-                self.record_marker(driver, "pause")
-            except Exception:
-                pass
+            self.record_marker(driver, "pause")
 
     def resume(self, driver: Any | None = None) -> None:
+        if driver is not None:
+            self._collect_all_windows(driver, discard=True)
         self.paused = False
         if driver is not None:
-            try:
-                self.record_marker(driver, "resume")
-            except Exception:
-                pass
+            self.record_marker(driver, "resume")
 
     def request_stop(self, driver: Any | None = None) -> None:
-        self.stopped = True
         if driver is not None:
-            try:
-                self.record_marker(driver, "stop")
-            except Exception:
-                pass
+            self.flush_final(driver)
+            self.record_marker(driver, "stop")
+        self.stopped = True
 
     def process_command(self, command: str, driver: Any) -> str:
         cmd = normalize_text(command)
@@ -1086,96 +1210,131 @@ class InteractionRecorder:
         return cmd
 
     def ingest(self, driver: Any, events: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
-        accepted: list[dict[str, Any]] = []
         if self.paused or self.stopped:
-            return accepted
+            return []
+        accepted: list[dict[str, Any]] = []
         for event in events:
-            item = dict(event)
-            state = collect_page_state(driver)
-            signature = page_state_signature(state)
-            selector_candidates, selector_recommended = build_selector_candidate_payload(driver, item)
-            before_state = self._last_state_by_context.get(str(item.get("iframe_path") or "top"), state)
-            after_state = dict(state)
-            item.setdefault("before_signature", page_state_signature(before_state))
-            item.setdefault("after_signature", signature)
-            item.setdefault("wait_condition", suggest_wait_condition(before_state, after_state))
-            item.setdefault("window_index", 0)
-            item.setdefault("window_handle", state.get("window_handle", ""))
-            item.setdefault("page_url", state.get("url", item.get("page_url", "")))
-            item.setdefault("page_title", state.get("title", item.get("page_title", "")))
-            item.setdefault("iframe_path", item.get("iframe_path") or state.get("iframe_path", "top"))
-            item.setdefault("selector_candidates", selector_candidates)
-            item.setdefault("selector_recommended", selector_recommended)
-            item.setdefault("timestamp", utc_now_iso())
-            accepted.append(_sanitize_raw_event(item))
-            self.raw_events.append(_sanitize_raw_event(item))
-            self._last_state_by_context[str(item.get("iframe_path") or "top")] = after_state
-            if signature and signature != self._last_page_signature:
-                self._last_page_signature = signature
-                self._capture_snapshot(driver, reason=normalize_text(item.get("action")) or "event")
-
+            item = _sanitize_raw_event(event)
+            if not item.get("selector_candidates") and driver is not None:
+                candidates, recommended = build_selector_candidate_payload(driver, item)
+                item["selector_candidates"] = candidates
+                item["selector_recommended"] = recommended
+            accepted.append(item)
+            self.raw_events.append(item)
         return accepted
 
     def poll(self, driver: Any) -> list[dict[str, Any]]:
+        events = self._collect_all_windows(driver, discard=self.paused)
         if self.paused or self.stopped:
             return []
-        events = self._collect_context_events(driver)
-        if not events:
+        accepted = self.ingest(driver, events)
+        try:
             state = collect_page_state(driver)
             signature = page_state_signature(state)
             if signature and signature != self._last_page_signature:
                 self._last_page_signature = signature
                 self._capture_snapshot(driver, reason="dom_changed")
-            return []
-        return self.ingest(driver, events)
+        except Exception:
+            pass
+        return accepted
+
+    def flush_final(self, driver: Any) -> list[dict[str, Any]]:
+        was_stopped = self.stopped
+        was_paused = self.paused
+        self.stopped = False
+        self.paused = False
+        try:
+            events = self._collect_all_windows(driver, discard=False)
+            return self.ingest(driver, events)
+        finally:
+            self.stopped = was_stopped
+            self.paused = was_paused
 
     def finalize(self, driver: Any | None = None) -> dict[str, Any]:
-        if driver is not None:
+        status_path = self.root / "record_status.json"
+        self._write_json(
+            "record_status.json",
+            {"status": "finalizing", "process_name": self.process_name, "updated_at": utc_now_iso()},
+        )
+        try:
+            if driver is not None:
+                self.flush_final(driver)
+            workflow = consolidate_events(self.raw_events)
+            steps: list[dict[str, Any]] = []
+            previous_state: dict[str, Any] = {}
+            for index, event in enumerate(workflow, start=1):
+                state = {
+                    "url": event.get("page_url", ""),
+                    "title": event.get("page_title", ""),
+                    "window_handle": event.get("window_handle", ""),
+                    "window_index": event.get("window_index", 0),
+                    "iframe_path": event.get("iframe_path", "top"),
+                    "interactive_count": event.get("interactive_count", 0),
+                    "modal_count": event.get("modal_count", 0),
+                    "frame_count": event.get("frame_count", 0),
+                    "text_hash": event.get("text_hash", ""),
+                    "html_hash": event.get("html_hash", ""),
+                    "value_length": event.get("value_length"),
+                }
+                steps.append(
+                    event_to_step(
+                        event,
+                        step_number=index,
+                        before_state=previous_state or state,
+                        after_state=state,
+                    )
+                )
+                previous_state = state
+
+            summary = build_workflow_summary(self.process_name, steps)
+            elements_used = self._build_elements_used(steps)
+            locator_candidates = self._build_locator_candidates_used(steps)
+            self._write_json("steps.json", self.raw_events)
+            self._write_json("workflow.json", {"process_name": self.process_name, "steps": steps})
+            self._write_json("workflow_summary.json", summary)
+            self._write_json("elements_used.json", elements_used)
+            self._write_json("locator_candidates_used.json", locator_candidates)
+            self._write_json(
+                "record_status.json",
+                {
+                    "status": "complete",
+                    "process_name": self.process_name,
+                    "updated_at": utc_now_iso(),
+                    "step_count": len(steps),
+                },
+            )
+            return {
+                "steps": steps,
+                "workflow_summary": summary,
+                "elements_used": elements_used,
+                "locator_candidates_used": locator_candidates,
+            }
+        except Exception as exc:
+            log.exception("Falha ao finalizar a gravação: %s", exc)
             try:
-                self.poll(driver)
+                status_path.write_text(
+                    json.dumps(
+                        {
+                            "status": "failed",
+                            "process_name": self.process_name,
+                            "updated_at": utc_now_iso(),
+                            "error": sanitize_text(exc),
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    ),
+                    encoding="utf-8",
+                )
             except Exception:
                 pass
-        workflow = consolidate_events(self.raw_events)
-        steps: list[dict[str, Any]] = []
-        previous_state: dict[str, Any] = {}
-        for idx, event in enumerate(workflow, start=1):
-            state = {
-                "url": event.get("page_url", ""),
-                "title": event.get("page_title", ""),
-                "window_handle": event.get("window_handle", ""),
-                "window_index": event.get("window_index", 0),
-                "iframe_path": event.get("iframe_path", "top"),
-                "interactive_count": event.get("interactive_count", 0),
-                "modal_count": event.get("modal_count", 0),
-                "frame_count": event.get("frame_count", 0),
-                "text_hash": event.get("text_hash", ""),
-                "html_hash": event.get("html_hash", ""),
-                "value_length": event.get("value_length"),
-            }
-            step = event_to_step(event, step_number=idx, before_state=previous_state or state, after_state=state)
-            steps.append(step)
-            previous_state = state
-
-        workflow_summary = build_workflow_summary(self.process_name, steps)
-        elements_used = self._build_elements_used(steps)
-        locator_candidates = self._build_locator_candidates_used(steps)
-
-        self._write_json("steps.json", self.raw_events)
-        self._write_json("workflow.json", {"process_name": self.process_name, "steps": steps})
-        self._write_json("workflow_summary.json", workflow_summary)
-        self._write_json("elements_used.json", elements_used)
-        self._write_json("locator_candidates_used.json", locator_candidates)
-
-        return {
-            "steps": steps,
-            "workflow_summary": workflow_summary,
-            "elements_used": elements_used,
-            "locator_candidates_used": locator_candidates,
-        }
+            raise
 
     def _write_json(self, name: str, payload: Any) -> None:
         path = self.root / name
-        path.write_text(json.dumps(sanitize_json_value(payload), ensure_ascii=False, indent=2), encoding="utf-8")
+        path.write_text(
+            json.dumps(sanitize_json_value(payload), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
     def _build_elements_used(self, steps: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
         used: list[dict[str, Any]] = []
@@ -1195,6 +1354,8 @@ class InteractionRecorder:
                     {
                         "page_url": step.get("page_url", ""),
                         "page_title": step.get("page_title", ""),
+                        "window_index": step.get("window_index", 0),
+                        "window_handle": step.get("window_handle", ""),
                         "iframe_path": step.get("iframe_path", ""),
                         "tag": step.get("tag", ""),
                         "id": step.get("id", ""),
@@ -1215,10 +1376,15 @@ class InteractionRecorder:
 
     def _build_locator_candidates_used(self, steps: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
         candidates: list[dict[str, Any]] = []
-        seen: set[tuple[str, str]] = set()
+        seen: set[tuple[str, str, str, str]] = set()
         for step in steps:
             for candidate in step.get("selector_candidates", []) or []:
-                key = (normalize_text(candidate.get("by")), normalize_text(candidate.get("selector")))
+                key = (
+                    normalize_text(step.get("window_handle")),
+                    normalize_text(step.get("iframe_path")),
+                    normalize_text(candidate.get("by")),
+                    normalize_text(candidate.get("selector")),
+                )
                 if key in seen:
                     continue
                 seen.add(key)
@@ -1227,6 +1393,8 @@ class InteractionRecorder:
                         {
                             "page_url": step.get("page_url", ""),
                             "page_title": step.get("page_title", ""),
+                            "window_handle": step.get("window_handle", ""),
+                            "iframe_path": step.get("iframe_path", ""),
                             "field": step.get("field", ""),
                             "strategy": candidate.get("strategy", ""),
                             "by": candidate.get("by", ""),
@@ -1250,6 +1418,7 @@ __all__ = [
     "consolidate_events",
     "consolidate_select2_events",
     "dedupe_input_events",
+    "dedupe_state_events",
     "event_to_step",
     "page_state_signature",
     "sanitize_record_value",
