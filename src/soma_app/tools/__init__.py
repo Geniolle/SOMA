@@ -1,5 +1,7 @@
 from __future__ import annotations
 
-from .site_mapper import main
+from ._dom_inventory_patch import apply_dom_inventory_javascript_fix
 
-__all__ = ["main"]
+apply_dom_inventory_javascript_fix()
+
+__all__: list[str] = []
