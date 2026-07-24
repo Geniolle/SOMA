@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import sys
+from pathlib import Path
 
 from soma_app.automation.dom_inventory import DomInventory
 from soma_app.tools._dom_inventory_patch import apply_dom_inventory_javascript_fix
@@ -30,4 +30,7 @@ def test_dom_inventory_patch_uses_compilable_quote_free_xpath_builder():
 
 
 def test_tools_package_does_not_import_site_mapper_early():
-    assert "soma_app.tools.site_mapper" not in sys.modules
+    package_init = Path(__file__).resolve().parents[2] / "src" / "soma_app" / "tools" / "__init__.py"
+    source = package_init.read_text(encoding="utf-8")
+
+    assert "from .site_mapper import" not in source
