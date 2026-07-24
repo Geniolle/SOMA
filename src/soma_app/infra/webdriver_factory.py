@@ -3,26 +3,21 @@ from __future__ import annotations
 
 import logging
 import os
+import re
+import subprocess
 from dataclasses import dataclass
-from typing import Any, Iterator, Optional
+from pathlib import Path
+from typing import Any, Dict, Iterator, Optional
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 
+from soma_app.infra.env import env_bool
 from soma_app.infra.log_config import ensure_artifacts_dirs
 from soma_app.infra.trace import log_kv
 
 logger = logging.getLogger(__name__)
-
-
-def _bool_env(name: str, default: bool = False) -> bool:
-    v = (os.getenv(name) or "").strip().lower()
-    if v in {"1", "true", "yes", "y", "on"}:
-        return True
-    if v in {"0", "false", "no", "n", "off"}:
-        return False
-    return default
 
 
 def _get_setting(settings: Any, *names: str, default: Any = None) -> Any:
@@ -44,7 +39,7 @@ def _resolve_headless(settings: Any = None, headless: Optional[bool] = None) -> 
     if isinstance(v, str):
         return v.strip().lower() in {"1", "true", "yes", "y", "on"}
 
-    return _bool_env("HEADLESS", default=True)
+    return env_bool("HEADLESS", default=True)
 
 
 def _resolve_downloads_dir(settings: Any = None, downloads_dir: Optional[str] = None) -> str:
@@ -230,3 +225,157 @@ class WebDriverFactory:
 
     def create_instance(self, *, headless: Optional[bool] = None, downloads_dir: Optional[str] = None) -> WebDriverBundle:
         return create_bundle(self._settings, headless=headless, downloads_dir=downloads_dir)
+
+
+# -----------------------------------------------------------------------------
+# ChromeDriver version diagnostics
+# -----------------------------------------------------------------------------
+def unwrap_webdriver(obj: Any) -> Any:
+    """
+    bundle.a pode ser um wrapper. Tenta chegar ao webdriver real.
+    """
+    cur = obj
+    seen = set()
+    for _ in range(6):
+        if cur is None:
+            return None
+        oid = id(cur)
+        if oid in seen:
+            return cur
+        seen.add(oid)
+
+        if hasattr(cur, "capabilities") and (hasattr(cur, "execute_script") or hasattr(cur, "execute_cdp_cmd")):
+            return cur
+
+        for attr in ("driver", "_driver", "webdriver", "_webdriver", "wd", "_wd", "browser", "_browser"):
+            nxt = getattr(cur, attr, None)
+            if nxt is not None and nxt is not cur:
+                cur = nxt
+                break
+        else:
+            return cur
+    return cur
+
+
+def _get_driver_path(driver: Any) -> str:
+    d = unwrap_webdriver(driver)
+    try:
+        svc = getattr(d, "service", None) or getattr(d, "_service", None)
+        p = getattr(svc, "path", None)
+        if isinstance(p, str) and p.strip():
+            return p.strip()
+    except Exception:
+        pass
+    return ""
+
+
+def _chromedriver_version_from_exe(driver_path: str) -> str:
+    p = (driver_path or "").strip()
+    if not p:
+        return ""
+    try:
+        r = subprocess.run([p, "--version"], capture_output=True, text=True, timeout=5)
+        out = (r.stdout or r.stderr or "").strip()
+        m = re.search(r"ChromeDriver\s+(\d+\.\d+\.\d+\.\d+)", out)
+        return m.group(1) if m else out[:120]
+    except Exception:
+        return ""
+
+
+def _chromedriver_version_from_capabilities(driver: Any) -> str:
+    d = unwrap_webdriver(driver)
+    try:
+        caps = getattr(d, "capabilities", {}) or {}
+        if isinstance(caps, dict):
+            chrome = caps.get("chrome")
+            if isinstance(chrome, dict):
+                v = chrome.get("chromedriverVersion")
+                if isinstance(v, str) and v.strip():
+                    return v.split(" ")[0].strip()
+    except Exception:
+        pass
+    return ""
+
+
+def _find_chromedriver_in_known_caches() -> str:
+    """
+    Fallback: procura chromedriver.exe nos caches comuns:
+      - Selenium Manager: %USERPROFILE%\\.cache\\selenium\\...
+      - webdriver_manager: %USERPROFILE%\\.wdm\\...
+    """
+    candidates: list[Path] = []
+
+    home = Path.home()
+    roots = [
+        home / ".cache" / "selenium",
+        home / ".wdm",
+    ]
+
+    la = os.getenv("LOCALAPPDATA")
+    if la:
+        roots.append(Path(la) / "selenium")
+    tmp = os.getenv("TEMP")
+    if tmp:
+        roots.append(Path(tmp) / "selenium")
+
+    for root in roots:
+        try:
+            if not root.exists():
+                continue
+            for p in root.rglob("chromedriver.exe"):
+                candidates.append(p)
+        except Exception:
+            continue
+
+    if not candidates:
+        return ""
+
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return str(candidates[0])
+
+
+def get_chrome_version(driver: Any) -> str:
+    d = unwrap_webdriver(driver)
+
+    try:
+        caps = getattr(d, "capabilities", {}) or {}
+        if isinstance(caps, dict):
+            v = caps.get("browserVersion")
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+    except Exception:
+        pass
+
+    try:
+        if hasattr(d, "execute_cdp_cmd"):
+            info = d.execute_cdp_cmd("Browser.getVersion", {})
+            if isinstance(info, dict):
+                prod = info.get("product")
+                if isinstance(prod, str) and prod.strip():
+                    return prod.strip()
+    except Exception:
+        pass
+
+    return ""
+
+
+def get_chromedriver_info(driver: Any) -> Dict[str, str]:
+    d = unwrap_webdriver(driver)
+
+    v = _chromedriver_version_from_capabilities(d)
+    if v:
+        return {"version": v, "path": _get_driver_path(d) or "n/a", "source": "capabilities"}
+
+    p = _get_driver_path(d)
+    if p:
+        v2 = _chromedriver_version_from_exe(p)
+        if v2:
+            return {"version": v2, "path": p, "source": "service.path"}
+
+    p3 = _find_chromedriver_in_known_caches()
+    if p3:
+        v3 = _chromedriver_version_from_exe(p3)
+        if v3:
+            return {"version": v3, "path": p3, "source": "cache"}
+
+    return {"version": "", "path": p or "n/a", "source": "unknown"}

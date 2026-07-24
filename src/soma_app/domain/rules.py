@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List
+from typing import Any, List
 
 from soma_app.domain.models import ContaOrdemRow, LinhaStatus, TipoMovimento
 
@@ -10,6 +10,10 @@ from soma_app.domain.models import ContaOrdemRow, LinhaStatus, TipoMovimento
 class ValidationError:
     field: str
     message: str
+
+
+def is_error_doc(doc_value: Any) -> bool:
+    return str(doc_value or "").strip().upper() in {"EM ERRO", "EM_ERRO"}
 
 
 def should_process(row: ContaOrdemRow, allow_retry_error: bool = False) -> bool:

@@ -267,7 +267,7 @@ def _pesquisar_lancamentos_periodo(page: EntradasSaidasPage, data_ini: str, data
         resultados = _ler_lancamentos_tabela(page.a)
 
         print(f"(7.2) Total de lançamentos encontrados no site: {len(resultados)}")
-        log_kv(log, logging.INFO, "Lançamentos carregados do SOMA.", data_ini=data_ini, data_fim=data_fim, total=len(resultados))
+        log_kv(log, "Lançamentos carregados do SOMA.", level=logging.INFO, data_ini=data_ini, data_fim=data_fim, total=len(resultados))
         return resultados
 
 
@@ -301,8 +301,8 @@ def _next_write_row(table: SheetsTable, code_col: str, target_cols: List[str]) -
         if _norm_code(rec.get(code_col)):
             log_kv(
                 log,
-                logging.WARNING,
                 "Existe buraco interno na sheet SOMA. Para evitar sobregravar dados, vou escrever no final.",
+                level=logging.WARNING,
                 first_blank_row=first_blank_row,
                 row_with_data_below=row_idx,
             )
@@ -393,8 +393,8 @@ def atualizar_sheet_soma(sheets: Any, actions: Any, settings: Any) -> None:
         if not novos:
             log_kv(
                 log,
-                logging.INFO,
                 "Nenhum lançamento novo para inserir na sheet SOMA.",
+                level=logging.INFO,
                 ws=ws_soma,
                 encontrados=len(lancamentos),
                 existentes=len(codigos_existentes),
@@ -429,8 +429,8 @@ def atualizar_sheet_soma(sheets: Any, actions: Any, settings: Any) -> None:
 
         log_kv(
             log,
-            logging.INFO,
             "Sheet SOMA atualizada com sucesso.",
+            level=logging.INFO,
             ws=ws_soma,
             data_ini=data_ini,
             data_fim=data_fim,

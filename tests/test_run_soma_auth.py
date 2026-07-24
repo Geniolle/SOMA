@@ -57,4 +57,7 @@ def test_recover_doc_requires_pending_doc_status():
     assert _should_recover_doc({"DOC. SOMA": "EM ERRO", "STATUS": "PENDENTE_DOC"}) is True
     assert _should_recover_doc({"DOC. SOMA": "EM ERRO", "STATUS": "ERRO"}) is False
     assert _should_recover_doc({"DOC. SOMA": "EM ERRO", "STATUS": ""}) is False
-    assert _should_recover_doc({"DOC. SOMA": "", "STATUS": "PENDENTE_DOC"}) is False
+    # DOC. SOMA pode ter sido sobrescrito (lock/unlock) entre o run que criou o
+    # documento e este reprocessamento; STATUS=PENDENTE_DOC sozinho já deve
+    # disparar a recuperação em vez de recriar o documento.
+    assert _should_recover_doc({"DOC. SOMA": "", "STATUS": "PENDENTE_DOC"}) is True

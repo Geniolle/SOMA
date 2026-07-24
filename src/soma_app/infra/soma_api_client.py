@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
@@ -244,8 +245,8 @@ class SomaApiClient:
                     if callable(log_kv):
                         log_kv(
                             log,
-                            logging.INFO,
                             "API response",
+                            level=logging.INFO,
                             method=method,
                             url=url,
                             status=resp.status_code,
@@ -292,7 +293,7 @@ class SomaApiClient:
         finally:
             if ctx is not None:
                 try:
-                    ctx.__exit__(None, None, None)
+                    ctx.__exit__(*sys.exc_info())
                 except Exception:
                     pass
 

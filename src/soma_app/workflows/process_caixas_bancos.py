@@ -53,13 +53,13 @@ def atualizar_caixas_bancos(sheets: Any, actions: Any, settings: Any) -> None:
         if not updates:
             log_kv(
                 log,
-                logging.ERROR,
                 "Nenhuma coluna alvo encontrada na sheet de caixas (ou nenhuma leitura útil).",
+                level=logging.ERROR,
                 ws=ws_caixas,
                 values=list(values.keys()),
             )
             return
 
         t.batch_update_cells(updates)
-        log_kv(log, logging.INFO, "Sheet Caixas atualizada.", ws=ws_caixas, row=row_idx, updated=len(updates))
+        log_kv(log, "Sheet Caixas atualizada.", level=logging.INFO, ws=ws_caixas, row=row_idx, updated=len(updates))
         print("(6.3) Sheet 'GERENCIAR CAIXAS' atualizada com sucesso.\n")

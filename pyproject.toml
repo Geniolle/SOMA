@@ -36,7 +36,7 @@ include = ["soma_app*"]
 [tool.ruff]
 line-length = 120
 target-version = "py312"
-src = ["src", "tests", "config"]
+src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]

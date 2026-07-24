@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import logging
-import os
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+from soma_app.domain.rules import is_error_doc
+from soma_app.infra.env import env_int
 
 logger = logging.getLogger(__name__)
 
@@ -24,10 +26,6 @@ def _norm(s: Any) -> str:
     return str(s or "").strip()
 
 
-def _is_error_doc(doc_value: str) -> bool:
-    return _norm(doc_value).upper() in {"EM ERRO", "EM_ERRO"}
-
-
 def _norm_tipo(v: Any) -> str:
     t = _norm(v).lower()
     if t in {"entrada", "entradas"}:
@@ -38,23 +36,6 @@ def _norm_tipo(v: Any) -> str:
     if t in {"transferência", "transferencia", "transferências", "transferencias"}:
         return "Transferência"
     return _norm(v)
-
-
-def _bool_env(name: str, default: bool = False) -> bool:
-    v = (os.getenv(name) or "").strip().lower()
-    if v in {"1", "true", "yes", "y", "on"}:
-        return True
-    if v in {"0", "false", "no", "n", "off"}:
-        return False
-    return default
-
-
-def _int_env(name: str, default: int) -> int:
-    v = (os.getenv(name) or "").strip()
-    try:
-        return int(v)
-    except Exception:
-        return default
 
 
 def _col_letter(n: int) -> str:
@@ -262,7 +243,7 @@ def preprocess_contaordem(
     - coluna STATUS não participa da validação de fila
     - locka APENAS o workset que ainda não está lockado (doc_col = 'Em processamento')
     """
-    bsz = batch_size or _int_env("BATCH_SIZE", 20)
+    bsz = batch_size or env_int("BATCH_SIZE", 20)
 
     t = SheetsTable(sheets, ws)
     t.load()
@@ -286,10 +267,10 @@ def preprocess_contaordem(
 
         # já lockado: conta inflight, mas mantém como candidato de reprocessamento
         is_locked = doc.lower() == lock_value.lower()
-        is_error_doc = _is_error_doc(doc)
+        doc_is_error = is_error_doc(doc)
         if is_locked:
             inflight += 1
-        elif doc != "" and not is_error_doc:
+        elif doc != "" and not doc_is_error:
             # já processado (tem doc diferente de EM ERRO)
             continue
 

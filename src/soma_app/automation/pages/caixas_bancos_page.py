@@ -85,7 +85,7 @@ class CaixasBancosPage:
                 time.sleep(2)
             except Exception:
                 p = self._snap("caixas_reset_fail")
-                log_kv(log, logging.ERROR, "Falha ao reabrir SOMA.", url=self.a.driver.current_url, title=self.a.driver.title, screenshot=p)
+                log_kv(log, "Falha ao reabrir SOMA.", level=logging.ERROR, url=self.a.driver.current_url, title=self.a.driver.title, screenshot=p)
 
     def _open_menu(self) -> None:
         with step(log, "caixas.open_menu"):
@@ -113,8 +113,8 @@ class CaixasBancosPage:
             p = self._snap("caixas_open_first_try_fail")
             log_kv(
                 log,
-                logging.ERROR,
                 "Caixas/Bancos não abriu na 1ª tentativa. Vou tentar reset.",
+                level=logging.ERROR,
                 url=self.a.driver.current_url,
                 title=self.a.driver.title,
                 screenshot=p,
@@ -142,8 +142,8 @@ class CaixasBancosPage:
             p = self._snap(f"caixas_read_timeout_{label.lower().replace(' ', '_')}")
             log_kv(
                 log,
-                logging.ERROR,
                 "Timeout ao ler valor.",
+                level=logging.ERROR,
                 label=label,
                 url=self.a.driver.current_url,
                 title=self.a.driver.title,
@@ -154,8 +154,8 @@ class CaixasBancosPage:
             p = self._snap(f"caixas_read_fail_{label.lower().replace(' ', '_')}")
             log_kv(
                 log,
-                logging.ERROR,
                 "Erro ao ler valor.",
+                level=logging.ERROR,
                 label=label,
                 err=str(e)[:200],
                 url=self.a.driver.current_url,
@@ -199,5 +199,5 @@ class CaixasBancosPage:
             for k, v in vals.items():
                 print(f" - {k}: {v}")
 
-            log_kv(log, logging.INFO, "Valores Caixas/Bancos lidos.", **vals)
+            log_kv(log, "Valores Caixas/Bancos lidos.", level=logging.INFO, **vals)
             return vals

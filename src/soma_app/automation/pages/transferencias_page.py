@@ -122,7 +122,7 @@ class TransferenciasPage:
                 raise RuntimeError(f"{field} não foi selecionado (linha {row.row_number}). Esperado conter '{v}', mas ficou '{txt}'.")
         except Exception:
             p = self.a.screenshot(f"transfer_select2_fail_{field.lower().replace(' ','_')}_row_{row.row_number}")
-            log_kv(log, logging.ERROR, "Select2 não confirmou seleção.", field=field, row=row.row_number, value=v, url=self.a.driver.current_url, screenshot=p)
+            log_kv(log, "Select2 não confirmou seleção.", level=logging.ERROR, field=field, row=row.row_number, value=v, url=self.a.driver.current_url, screenshot=p)
             raise
 
     def open_new(self, row: ContaOrdemRow) -> None:

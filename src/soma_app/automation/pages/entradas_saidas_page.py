@@ -153,7 +153,7 @@ class EntradasSaidasPage:
     def _emit(self, msg: str, level: int = logging.INFO, **kv: Any) -> None:
         print(msg)
         try:
-            log_kv(log, level, msg, **kv)
+            log_kv(log, msg, level=level, **kv)
         except Exception:
             log.log(level, msg)
 
@@ -486,8 +486,8 @@ class EntradasSaidasPage:
                     p = self.a.screenshot(f"entradas_saidas_new_form_row_{row.row_number}_try_{attempt}")
                     log_kv(
                         log,
-                        logging.ERROR,
                         "Form 'Nova Entrada/Saída' não ficou pronto. Vou tentar novamente.",
+                        level=logging.ERROR,
                         row=row.row_number,
                         tipo=row.tipo.value,
                         attempt=attempt,
@@ -771,6 +771,16 @@ class EntradasSaidasPage:
     # -----------------------
     # doc search
     # -----------------------
+    def _click_radio_force_change(self, locator: Tuple[str, str]) -> None:
+        # a revelação do painel de data é um TOGGLE ligado ao clique do rádio,
+        # não um "show" condicional: clicar de novo num retry (mesma página,
+        # sem reload, painel já visível da tentativa anterior) esconde-o outra
+        # vez. Por isso só clicamos se o rádio ainda não estiver marcado.
+        el = self.a.wait_present(locator, timeout_seconds=30)
+        if el.is_selected():
+            return
+        self.a.click_js(locator)
+
     def _go_back_to_list_best_effort(self, row: ContaOrdemRow) -> None:
         with step(log, "entradas_saidas.back_to_list_best_effort", row=row.row_number, tipo=row.tipo.value):
             self._dismiss_overlays()
@@ -784,46 +794,76 @@ class EntradasSaidasPage:
                 pass
             self._ensure_pesquisa_visivel(row)
 
-    def _search_doc_id(self, row: ContaOrdemRow) -> str:
-        with step(log, "entradas_saidas.search_doc", row=row.row_number, tipo=row.tipo.value, data=row.data_mov):
-            self._go_back_to_list_best_effort(row)
+    def _search_doc_id_attempt(self, row: ContaOrdemRow) -> str:
+        self._go_back_to_list_best_effort(row)
 
-            self.a.type(self.PESQ_DESCRICAO, row.descricao_soma)
-            self._emit(f"Campo pesquisar a descrição preenchida com sucesso: {row.descricao_soma}", row=row.row_number, tipo=row.tipo.value)
+        self.a.type(self.PESQ_DESCRICAO, row.descricao_soma)
+        self._emit(f"Campo pesquisar a descrição preenchida com sucesso: {row.descricao_soma}", row=row.row_number, tipo=row.tipo.value)
 
-            self.a.click_js(self.RADIO_PERIODO)
-            time.sleep(0.5)
-            self._emit("Selecionado o botão de rádio 'Periodo'", row=row.row_number, tipo=row.tipo.value)
+        self._click_radio_force_change(self.RADIO_PERIODO)
+        time.sleep(0.5)
+        self._emit("Selecionado o botão de rádio 'Periodo'", row=row.row_number, tipo=row.tipo.value)
 
+        self._click_radio_force_change(self.RADIO_DATA_PAGAMENTO)
+        time.sleep(0.5)
+        self._emit("Selecionado o botão de rádio 'Data de Pagamento'", row=row.row_number, tipo=row.tipo.value)
+
+        if not self.a.exists(self.DATA_INI, timeout_seconds=3):
+            # painel pode ter ficado escondido mesmo com o rádio já marcado
+            # (ex.: reset parcial ao voltar à lista); força mais um toggle.
             self.a.click_js(self.RADIO_DATA_PAGAMENTO)
             time.sleep(0.5)
-            self._emit("Selecionado o botão de rádio 'Data de Pagamento'", row=row.row_number, tipo=row.tipo.value)
 
-            self.a.type(self.DATA_INI, row.data_mov)
-            self._emit(f"Data início preenchida com sucesso: {row.data_mov}", row=row.row_number, tipo=row.tipo.value)
+        self.a.type(self.DATA_INI, row.data_mov)
+        self._emit(f"Data início preenchida com sucesso: {row.data_mov}", row=row.row_number, tipo=row.tipo.value)
 
-            self.a.type(self.DATA_FIM, row.data_mov)
-            self._emit(f"Data fim preenchida com sucesso: {row.data_mov}", row=row.row_number, tipo=row.tipo.value)
+        self.a.type(self.DATA_FIM, row.data_mov)
+        self._emit(f"Data fim preenchida com sucesso: {row.data_mov}", row=row.row_number, tipo=row.tipo.value)
 
-            self.a.click_js(self.BTN_PESQUISAR)
-            self._emit("Botão 'Pesquisar' clicado com sucesso!", row=row.row_number, tipo=row.tipo.value)
+        self.a.click_js(self.BTN_PESQUISAR)
+        self._emit("Botão 'Pesquisar' clicado com sucesso!", row=row.row_number, tipo=row.tipo.value)
 
-            try:
-                doc = self.a.wait_visible(self.RESULT_DOC, timeout_seconds=30).text.strip()
-            except TimeoutException as e:
-                if self._exists_any(self.NO_RESULTS_CANDIDATES, timeout_seconds=2):
-                    raise RuntimeError(
-                        f"Sem resultados na pesquisa do nº SOMA. desc='{self._safe(row.descricao_soma)}' data='{self._safe(row.data_mov)}'"
-                    ) from e
-                raise TimeoutException(
-                    f"Timeout à espera do RESULT_DOC. desc='{self._safe(row.descricao_soma)}' data='{self._safe(row.data_mov)}'"
+        try:
+            doc = self.a.wait_visible(self.RESULT_DOC, timeout_seconds=30).text.strip()
+        except TimeoutException as e:
+            if self._exists_any(self.NO_RESULTS_CANDIDATES, timeout_seconds=2):
+                raise RuntimeError(
+                    f"Sem resultados na pesquisa do nº SOMA. desc='{self._safe(row.descricao_soma)}' data='{self._safe(row.data_mov)}'"
                 ) from e
+            raise TimeoutException(
+                f"Timeout à espera do RESULT_DOC. desc='{self._safe(row.descricao_soma)}' data='{self._safe(row.data_mov)}'"
+            ) from e
 
-            if not doc:
-                raise RuntimeError("Doc ID vazio após pesquisa.")
+        if not doc:
+            raise RuntimeError("Doc ID vazio após pesquisa.")
 
-            self._emit(f"Número do documento extraído: {doc}", row=row.row_number, tipo=row.tipo.value)
-            return doc
+        self._emit(f"Número do documento extraído: {doc}", row=row.row_number, tipo=row.tipo.value)
+        return doc
+
+    def _search_doc_id(self, row: ContaOrdemRow) -> str:
+        with step(log, "entradas_saidas.search_doc", row=row.row_number, tipo=row.tipo.value, data=row.data_mov):
+            # A grelha (DataTables) pode não ter indexado o registo recém-criado
+            # a tempo da primeira pesquisa; tenta novamente com backoff antes de
+            # desistir para evitar falsos "sem resultados" por lag de indexação.
+            attempts = 3
+            delays = (3, 6)
+            last_exc: Exception | None = None
+            for attempt in range(1, attempts + 1):
+                try:
+                    return self._search_doc_id_attempt(row)
+                except RuntimeError as e:
+                    last_exc = e
+                    if "Sem resultados" not in str(e) or attempt == attempts:
+                        raise
+                    delay = delays[min(attempt - 1, len(delays) - 1)]
+                    self._emit(
+                        f"Pesquisa sem resultados (tentativa {attempt}/{attempts}), retry em {delay}s",
+                        row=row.row_number,
+                        tipo=row.tipo.value,
+                    )
+                    time.sleep(delay)
+            assert last_exc is not None
+            raise last_exc
 
     def fetch_dados_doc(self, doc_id: str) -> str:
         url = f"{self.base_ivv}?mod=ivv&exec=entradas_saidas_dados&ID={doc_id}"
@@ -866,5 +906,5 @@ class EntradasSaidasPage:
                     self._do_baixa(row)
 
             doc = self._search_doc_id(row)
-            log_kv(log, logging.INFO, "Documento criado.", row=row.row_number, tipo=row.tipo.value, doc=doc)
+            log_kv(log, "Documento criado.", level=logging.INFO, row=row.row_number, tipo=row.tipo.value, doc=doc)
             return doc
