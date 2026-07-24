@@ -855,6 +855,7 @@ class InteractionRecorder:
     root: Path
     site_recorder: Any
     dom_inventory: DomInventory
+    capture_timeout_seconds: float = 20.0
     poll_seconds: float = 0.5
     capture_hidden: bool = False
     paused: bool = False
@@ -1110,6 +1111,9 @@ class InteractionRecorder:
                 page_id=page_id,
                 screenshot_path=screenshot_path,
                 dom_dir=str(self.dom_dir),
+                reason=reason,
+                wait_timeout_seconds=max(0.25, float(self.capture_timeout_seconds)),
+                wait_stable_seconds=max(0.1, float(self.capture_timeout_seconds) / 20.0),
             )
             if snapshot.signature in self._seen_signatures:
                 return None
@@ -1130,9 +1134,15 @@ class InteractionRecorder:
             log.warning("Falha a gravar snapshot: %s", exc)
             return None
 
-    def capture_checkpoint(self, driver: Any, label: str) -> dict[str, Any]:
+    def capture_checkpoint(self, driver: Any, label: str, *, timeout_seconds: float | None = None) -> dict[str, Any]:
         state = collect_page_state(driver)
-        snapshot = self._capture_snapshot(driver, reason=label)
+        previous_timeout = self.capture_timeout_seconds
+        if timeout_seconds is not None:
+            self.capture_timeout_seconds = max(1.0, float(timeout_seconds))
+        try:
+            snapshot = self._capture_snapshot(driver, reason=label)
+        finally:
+            self.capture_timeout_seconds = previous_timeout
         payload = _sanitize_raw_event(
             {
                 "action": "checkpoint",
@@ -1192,7 +1202,7 @@ class InteractionRecorder:
     def process_command(self, command: str, driver: Any) -> str:
         cmd = normalize_text(command)
         if not cmd:
-            self.capture_checkpoint(driver, "checkpoint")
+            self.capture_checkpoint(driver, "checkpoint", timeout_seconds=self.capture_timeout_seconds)
             return "checkpoint"
         if cmd in {"q", "quit", "exit", "done", "finish"}:
             self.request_stop(driver)

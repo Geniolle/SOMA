@@ -55,6 +55,7 @@
   "record": {
     "poll_seconds": 0.5,
     "stability_seconds": 1.0,
-    "capture_hidden": false
+    "capture_hidden": false,
+    "initial_capture_timeout_seconds": 20.0
   }
 }

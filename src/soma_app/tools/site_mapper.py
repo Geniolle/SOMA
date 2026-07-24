@@ -69,6 +69,7 @@ class RecordConfig:
     poll_seconds: float = 0.5
     stability_seconds: float = 1.0
     capture_hidden: bool = False
+    initial_capture_timeout_seconds: float = 20.0
 
 
 @dataclass
@@ -149,6 +150,7 @@ def load_site_mapper_config(path: str | None = None) -> SiteMapperConfig:
         poll_seconds=float(record_cfg.get("poll_seconds", 0.5)),
         stability_seconds=float(record_cfg.get("stability_seconds", 1.0)),
         capture_hidden=bool(record_cfg.get("capture_hidden", False)),
+        initial_capture_timeout_seconds=float(record_cfg.get("initial_capture_timeout_seconds", 20.0)),
     )
     return SiteMapperConfig(manual=manual, controlled=controlled, record=record)
 
@@ -549,6 +551,67 @@ class SiteMapRunner:
         thread.start()
         return thread
 
+    def _capture_record_checkpoint(self, bundle: Any, session: InteractionRecorder, label: str) -> bool:
+        timeout_seconds = max(0.25, float(self.config.record.initial_capture_timeout_seconds))
+        log_kv(log, "[record] A iniciar checkpoint inicial", level=logging.INFO, run_id=self.run_id, timeout_seconds=timeout_seconds)
+        done = threading.Event()
+        result: dict[str, Any] = {}
+
+        def _worker() -> None:
+            try:
+                result["payload"] = session.capture_checkpoint(
+                    bundle.driver,
+                    label,
+                    timeout_seconds=timeout_seconds,
+                )
+            except Exception as exc:
+                result["error"] = exc
+            finally:
+                done.set()
+
+        thread = threading.Thread(target=_worker, daemon=True, name=f"soma-record-{label}")
+        thread.start()
+
+        deadline = time.monotonic() + timeout_seconds
+        poll_interval = min(0.25, max(0.05, timeout_seconds / 10.0))
+        while not done.wait(poll_interval):
+            self._drain_commands(bundle, session)
+            if self._stop_event.is_set() or session.stopped:
+                log_kv(log, "[record] Checkpoint inicial interrompido por comando do utilizador.", level=logging.INFO, run_id=self.run_id)
+                return False
+            if time.monotonic() >= deadline:
+                log_kv(log, "[record] Checkpoint inicial excedeu o tempo limite.", level=logging.WARNING, run_id=self.run_id, timeout_seconds=timeout_seconds)
+                return False
+
+        if "error" in result:
+            log_kv(log, "[record] Checkpoint inicial falhou.", level=logging.WARNING, run_id=self.run_id, err=str(result["error"]))
+            return False
+
+        log_kv(log, "[record] Checkpoint inicial concluído.", level=logging.INFO, run_id=self.run_id)
+        return True
+
+    def _bootstrap_record_mode(self, bundle: Any, session: InteractionRecorder, process_name: str) -> bool:
+        log_kv(log, "[record] A instalar recorder", level=logging.INFO, run_id=self.run_id, process=process_name)
+        self._start_command_reader()
+        log_kv(log, "[record] Leitor de comandos iniciado", level=logging.INFO, run_id=self.run_id)
+        log.info("Modo record ativo. Comandos: Enter=checkpoint, mark=marcador, pause=pausa, resume=retoma, q=finalizar.")
+
+        try:
+            session.install(bundle.driver)
+            log_kv(log, "[record] Recorder instalado", level=logging.INFO, run_id=self.run_id)
+        except Exception as exc:
+            log_kv(log, "[record] Falha ao instalar recorder.", level=logging.WARNING, run_id=self.run_id, err=str(exc))
+
+        checkpoint_ok = self._capture_record_checkpoint(bundle, session, "record_start")
+        if not checkpoint_ok:
+            log_kv(
+                log,
+                "[record] A gravação continua sem checkpoint inicial concluído.",
+                level=logging.WARNING,
+                run_id=self.run_id,
+            )
+        return checkpoint_ok
+
     def _drain_commands(self, bundle: Any, recorder: InteractionRecorder) -> None:
         while True:
             try:
@@ -825,22 +888,18 @@ class SiteMapRunner:
             process_name = ""
         process_name = process_name or f"record_{self.run_id}"
 
+        log_kv(log, "[record] A instalar recorder", level=logging.INFO, run_id=self.run_id, process=process_name)
         session = InteractionRecorder(
             process_name=process_name,
             root=self.root,
             site_recorder=self.recorder,
             dom_inventory=self.inventory,
+            capture_timeout_seconds=self.config.record.initial_capture_timeout_seconds,
             poll_seconds=self.config.record.poll_seconds,
             capture_hidden=self.config.record.capture_hidden,
         )
         self.record_session = session
-        session.install(bundle.driver)
-        session.capture_checkpoint(bundle.driver, "record_start")
-
-        log.info(
-            "Modo record ativo. Comandos: Enter=checkpoint, mark=marcador, pause=pausa, resume=retoma, q=finalizar."
-        )
-        self._start_command_reader()
+        self._bootstrap_record_mode(bundle, session, process_name)
 
         previous_state = collect_page_state(bundle.driver)
         previous_signature = page_state_signature(previous_state)

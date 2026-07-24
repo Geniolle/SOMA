@@ -867,8 +867,23 @@ class DomInventory:
                 except Exception:
                     pass
 
-    def capture(self, driver: Any, *, page_id: str, screenshot_path: str = "", dom_dir: str = "") -> PageSnapshot:
-        self._wait_ready(driver)
+    def capture(
+        self,
+        driver: Any,
+        *,
+        page_id: str,
+        screenshot_path: str = "",
+        dom_dir: str = "",
+        reason: str = "",
+        wait_timeout_seconds: float = 20.0,
+        wait_stable_seconds: float = 0.75,
+    ) -> PageSnapshot:
+        trace_record = normalize_text(reason) in {"record_start", "checkpoint", "manual_input"}
+        if trace_record:
+            self.log.info("[record] A aguardar estabilização do DOM")
+        self._wait_ready(driver, timeout_seconds=wait_timeout_seconds, stable_seconds=wait_stable_seconds)
+        if trace_record:
+            self.log.info("[record] DOM estabilizado")
 
         current_url = getattr(driver, "current_url", "") or ""
         title = getattr(driver, "title", "") or ""
@@ -888,8 +903,13 @@ class DomInventory:
         html_text = redact_sensitive_html(html_text)
         structure_hash = hashlib.sha256(html_text.encode("utf-8")).hexdigest()
 
+        if trace_record:
+            self.log.info("[record] A recolher elementos")
         context = self._collect_context_payload(driver)
         raw_elements = context.get("elements") or []
+        if trace_record:
+            self.log.info("[record] Elementos recolhidos: %s", len(raw_elements))
+            self.log.info("[record] A validar seletores")
 
         elements: list[ElementSnapshot] = []
         interactive_signature_bits: list[str] = []
@@ -978,9 +998,13 @@ class DomInventory:
                 continue
             elements.append(snapshot)
 
+        if trace_record:
+            self.log.info("[record] A capturar iframes")
         frames: list[FrameSnapshot] = []
         html_snapshots: list[tuple[str, str]] = [("top", html_text)]
         self._collect_frames(driver, "top", 0, normalized, sanitize_text(title), frames, html_snapshots)
+        if trace_record:
+            self.log.info("[record] Iframes recolhidos: %s", len(frames))
 
         interactive_hash = hashlib.sha256("\n".join(interactive_signature_bits).encode("utf-8")).hexdigest()
         signature = page_signature(normalized, title, structure_hash, interactive_hash)
