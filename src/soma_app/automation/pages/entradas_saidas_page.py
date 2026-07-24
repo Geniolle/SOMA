@@ -568,6 +568,11 @@ class EntradasSaidasPage:
                 field="descricao",
                 clear=True,
             )
+            try:
+                self.a.dump_page_source(f"entradas_saidas_descricao_row_{row.row_number}")
+                self.a.dump_locator_probe(f"entradas_saidas_descricao_row_{row.row_number}", self.DESCRICAO_CANDIDATES)
+            except Exception:
+                pass
             self._emit(f"Descrição preenchida com sucesso: {v}", row=row.row_number, tipo=row.tipo.value)
 
         with step(log, "entradas_saidas.fill.valor", row=row.row_number, tipo=row.tipo.value, field="VALOR"):

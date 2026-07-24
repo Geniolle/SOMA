@@ -7,8 +7,6 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-import gspread
-
 logger = logging.getLogger(__name__)
 
 
@@ -145,6 +143,14 @@ class SheetsClient:
 
     def __init__(self, settings: Any):
         self.settings = settings
+
+        try:
+            import gspread  # type: ignore
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError(
+                "A dependência gspread não está disponível neste ambiente. "
+                "Instale os requisitos do projeto para usar SheetsClient."
+            ) from exc
 
         creds_path = _resolve_credentials_path(settings)
         self._gc = gspread.service_account(filename=str(creds_path))

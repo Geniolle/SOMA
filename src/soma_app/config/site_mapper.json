@@ -1,0 +1,55 @@
+{
+  "manual": {
+    "poll_seconds": 1.0,
+    "stability_seconds": 1.0,
+    "capture_hidden": false
+  },
+  "controlled": {
+    "allowed_url_patterns": [
+      "*/IVV/*",
+      "*mod=ivv*",
+      "*exec=*"
+    ],
+    "allowed_menu_texts": [
+      "SOMA",
+      "Entradas/Saídas",
+      "Entradas Saídas",
+      "Caixas/Bancos"
+    ],
+    "allowed_click_selectors": [
+      "a[href*='IVV']",
+      "button[data-testid]",
+      "[role='menuitem']",
+      "[role='button']"
+    ],
+    "blocked_texts": [
+      "salvar",
+      "gravar",
+      "confirmar",
+      "eliminar",
+      "apagar",
+      "pagar",
+      "realizar pagamento",
+      "inserir baixa",
+      "submeter",
+      "processar",
+      "executar",
+      "cancelar documento"
+    ],
+    "blocked_selectors": [
+      "button[type='submit']",
+      "input[type='submit']",
+      ".btn-danger",
+      ".danger"
+    ],
+    "blocked_form_selectors": [
+      "form"
+    ],
+    "max_pages": 40,
+    "max_depth": 3,
+    "timeout_seconds": 30,
+    "stability_seconds": 1.0,
+    "capture_hidden": false,
+    "max_frames": 2
+  }
+}

@@ -43,7 +43,7 @@
     ],
     "PLANO_CONTA": "/html/body/div[2]/div/div[3]/div/div/form/div[6]/div/span/span[1]/span/span[1]",
     "CENTRO_CUSTO": "/html/body/div[2]/div/div[3]/div/div/form/div[7]/div/span/span[1]/span",
-    "DESCRICAO": "/html/body/div[2]/div/div[3]/div/div/form/div[9]/div/input",
+    "DESCRICAO": "//input[@id='descricao_input']",
     "VALOR": "/html/body/div[2]/div/div[3]/div/div/form/div[12]/div/input",
     "OBS": "/html/body/div[2]/div/div[3]/div/div/form/div[21]/div/textarea",
     "PLANO_CONTA_CANDIDATES": [
@@ -59,7 +59,8 @@
       "(//form//span[contains(@class,'select2-selection')])[2]"
     ],
     "DESCRICAO_CANDIDATES": [
-      "/html/body/div[2]/div/div[3]/div/div/form/div[9]/div/input",
+      "//input[@id='descricao_input']",
+      "//input[@name='descricao']",
       "//form//label[contains(normalize-space(.), 'Descrição')]/following::input[1]",
       "//form//label[contains(normalize-space(.), 'Descricao')]/following::input[1]",
       "//form//*[contains(normalize-space(.), 'Descrição')]/following::input[1]",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import time
 from dataclasses import dataclass
@@ -46,6 +47,76 @@ class Actions:
             self.driver.save_screenshot(str(path))
         except (InvalidSessionIdException, WebDriverException) as e:
             log.error("Screenshot falhou (sessão do browser não está ativa): %s", e)
+        return path
+
+    def dump_page_source(self, name: str) -> Path:
+        safe = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in name)
+        path = self.cfg.screenshots_dir.parent / "diagnostics" / f"{safe}.html"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            path.write_text(self.driver.page_source or "", encoding="utf-8")
+        except Exception as e:
+            log.error("Falha ao gravar page_source: %s", e)
+        return path
+
+    def dump_locator_probe(self, name: str, locators: Iterable[Locator]) -> Path:
+        safe = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in name)
+        path = self.cfg.screenshots_dir.parent / "diagnostics" / f"{safe}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        payload = []
+        for locator in locators:
+            entry: dict[str, object] = {"locator": locator, "count": 0, "found": False}
+            try:
+                elements = self.driver.find_elements(*locator)
+                entry["count"] = len(elements)
+                if elements:
+                    el = elements[0]
+                    entry["found"] = True
+                    try:
+                        entry["tag"] = el.tag_name
+                    except Exception:
+                        pass
+                    try:
+                        entry["text"] = (el.text or "").strip()
+                    except Exception:
+                        pass
+                    try:
+                        entry["value"] = (el.get_attribute("value") or "").strip()
+                    except Exception:
+                        pass
+                    try:
+                        entry["name"] = el.get_attribute("name")
+                    except Exception:
+                        pass
+                    try:
+                        entry["id"] = el.get_attribute("id")
+                    except Exception:
+                        pass
+                    try:
+                        entry["class"] = el.get_attribute("class")
+                    except Exception:
+                        pass
+                    try:
+                        entry["displayed"] = bool(el.is_displayed())
+                    except Exception:
+                        pass
+                    try:
+                        entry["enabled"] = bool(el.is_enabled())
+                    except Exception:
+                        pass
+                    try:
+                        entry["outer_html"] = self.driver.execute_script("return arguments[0].outerHTML;", el)
+                    except Exception:
+                        pass
+            except Exception as e:
+                entry["error"] = str(e)
+            payload.append(entry)
+
+        try:
+            path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as e:
+            log.error("Falha ao gravar probe de locators: %s", e)
         return path
 
     def wait_dom_ready(self, timeout_seconds: int = 30) -> None:
