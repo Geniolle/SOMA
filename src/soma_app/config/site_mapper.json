@@ -51,5 +51,10 @@
     "stability_seconds": 1.0,
     "capture_hidden": false,
     "max_frames": 2
+  },
+  "record": {
+    "poll_seconds": 0.5,
+    "stability_seconds": 1.0,
+    "capture_hidden": false
   }
 }

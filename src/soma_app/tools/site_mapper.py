@@ -6,6 +6,7 @@ import html
 import json
 import logging
 import os
+import queue
 import threading
 import time
 from dataclasses import asdict, dataclass, field
@@ -27,6 +28,7 @@ from soma_app.automation.dom_inventory import (
     sanitize_json_value,
     sanitize_text,
 )
+from soma_app.automation.interaction_recorder import InteractionRecorder, collect_page_state, page_state_signature
 from soma_app.automation.pages.login_page import LoginPage
 from soma_app.config.locators import _coerce_locator, _coerce_locator_list, load_page_locator_config
 from soma_app.config.settings import Settings
@@ -63,9 +65,17 @@ class ControlledConfig:
 
 
 @dataclass
+class RecordConfig:
+    poll_seconds: float = 0.5
+    stability_seconds: float = 1.0
+    capture_hidden: bool = False
+
+
+@dataclass
 class SiteMapperConfig:
     manual: ManualConfig = field(default_factory=ManualConfig)
     controlled: ControlledConfig = field(default_factory=ControlledConfig)
+    record: RecordConfig = field(default_factory=RecordConfig)
 
 
 def _load_settings() -> Settings:
@@ -114,6 +124,7 @@ def load_site_mapper_config(path: str | None = None) -> SiteMapperConfig:
     data = json.loads(cfg_path.read_text(encoding="utf-8"))
     manual_cfg = data.get("manual", {}) if isinstance(data, dict) else {}
     controlled_cfg = data.get("controlled", {}) if isinstance(data, dict) else {}
+    record_cfg = data.get("record", {}) if isinstance(data, dict) else {}
 
     manual = ManualConfig(
         poll_seconds=float(manual_cfg.get("poll_seconds", 1.0)),
@@ -134,7 +145,12 @@ def load_site_mapper_config(path: str | None = None) -> SiteMapperConfig:
         capture_hidden=bool(controlled_cfg.get("capture_hidden", False)),
         max_frames=int(controlled_cfg.get("max_frames", 1)),
     )
-    return SiteMapperConfig(manual=manual, controlled=controlled)
+    record = RecordConfig(
+        poll_seconds=float(record_cfg.get("poll_seconds", 0.5)),
+        stability_seconds=float(record_cfg.get("stability_seconds", 1.0)),
+        capture_hidden=bool(record_cfg.get("capture_hidden", False)),
+    )
+    return SiteMapperConfig(manual=manual, controlled=controlled, record=record)
 
 
 def _ensure_dir(path: Path) -> Path:
@@ -484,10 +500,11 @@ def _blocked_any(text: str, selector: str, blocked_texts: Iterable[str], blocked
 
 
 class SiteMapRunner:
-    def __init__(self, settings: Settings, *, config: SiteMapperConfig, run_id: str, headless: bool | None = None):
+    def __init__(self, settings: Settings, *, config: SiteMapperConfig, run_id: str, mode: str, headless: bool | None = None):
         self.settings = settings
         self.config = config
         self.run_id = run_id
+        self.mode = mode
         self.headless = settings.headless if headless is None else bool(headless)
         self.root = _dom_root_root(settings, run_id)
         self.recorder = SiteMapRecorder(self.root, config=config, locators_path=str(DEFAULT_CONFIG_PATH.parent / "locators.json"))
@@ -499,6 +516,8 @@ class SiteMapRunner:
         self._stop_event = threading.Event()
         self._manual_capture_event = threading.Event()
         self._seen_windows: set[str] = set()
+        self._command_queue: queue.Queue[str] = queue.Queue()
+        self.record_session: InteractionRecorder | None = None
 
     def _build_bundle(self):
         bundle = WebDriverFactory.create(self.settings, headless=self.headless)
@@ -515,6 +534,39 @@ class SiteMapRunner:
     def _login(self, bundle: Any) -> None:
         login = LoginPage(bundle.a, self.settings)
         login.login()
+
+    def _start_command_reader(self) -> threading.Thread:
+        def _reader() -> None:
+            while not self._stop_event.is_set():
+                try:
+                    line = input()
+                except EOFError:
+                    self._stop_event.set()
+                    return
+                self._command_queue.put(line)
+
+        thread = threading.Thread(target=_reader, daemon=True)
+        thread.start()
+        return thread
+
+    def _drain_commands(self, bundle: Any, recorder: InteractionRecorder) -> None:
+        while True:
+            try:
+                command = self._command_queue.get_nowait()
+            except queue.Empty:
+                return
+            result = recorder.process_command(command, bundle.driver)
+            if result == "checkpoint":
+                log_kv(log, "Checkpoint manual registado.", level=logging.INFO, run_id=self.run_id)
+            elif result == "mark":
+                log_kv(log, "Marcador registado.", level=logging.INFO, run_id=self.run_id)
+            elif result == "pause":
+                log_kv(log, "Gravação pausada.", level=logging.INFO, run_id=self.run_id)
+            elif result == "resume":
+                log_kv(log, "Gravação retomada.", level=logging.INFO, run_id=self.run_id)
+            elif result == "stop":
+                self._stop_event.set()
+                return
 
     def _capture_current(self, bundle: Any, *, reason: str) -> PageSnapshot | None:
         try:
@@ -764,13 +816,121 @@ class SiteMapRunner:
             self._stop_event.set()
             return 130
 
+    def run_record(self, bundle: Any) -> int:
+        self._login(bundle)
+
+        try:
+            process_name = input("Nome do processo a gravar: ").strip()
+        except EOFError:
+            process_name = ""
+        process_name = process_name or f"record_{self.run_id}"
+
+        session = InteractionRecorder(
+            process_name=process_name,
+            root=self.root,
+            site_recorder=self.recorder,
+            dom_inventory=self.inventory,
+            poll_seconds=self.config.record.poll_seconds,
+            capture_hidden=self.config.record.capture_hidden,
+        )
+        self.record_session = session
+        session.install(bundle.driver)
+        session.capture_checkpoint(bundle.driver, "record_start")
+
+        log.info(
+            "Modo record ativo. Comandos: Enter=checkpoint, mark=marcador, pause=pausa, resume=retoma, q=finalizar."
+        )
+        self._start_command_reader()
+
+        previous_state = collect_page_state(bundle.driver)
+        previous_signature = page_state_signature(previous_state)
+        last_window_handles = set()
+        try:
+            last_window_handles = set(bundle.driver.window_handles)
+        except Exception:
+            last_window_handles = set()
+        last_handle = str(getattr(bundle.driver, "current_window_handle", "") or "")
+
+        def _append_synthetic(action: str, before_state: Mapping[str, Any], after_state: Mapping[str, Any], **extra: Any) -> None:
+            payload = {
+                "action": action,
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "page_url": after_state.get("url", before_state.get("url", "")),
+                "page_title": after_state.get("title", before_state.get("title", "")),
+                "window_index": 0,
+                "window_handle": after_state.get("window_handle", before_state.get("window_handle", "")),
+                "iframe_path": after_state.get("iframe_path", before_state.get("iframe_path", "top")),
+                "before_signature": page_state_signature(before_state),
+                "after_signature": page_state_signature(after_state),
+                "wait_condition": "synthetic",
+            }
+            payload.update(extra)
+            session.raw_events.append(payload)
+
+        try:
+            while not self._stop_event.is_set() and not session.stopped:
+                self._drain_commands(bundle, session)
+                if self._stop_event.is_set() or session.stopped:
+                    break
+
+                before_state = previous_state
+                before_signature = previous_signature
+                before_handle = last_handle
+                try:
+                    handles = list(bundle.driver.window_handles)
+                except Exception:
+                    handles = []
+                current_handle = str(getattr(bundle.driver, "current_window_handle", "") or "")
+                current_state = collect_page_state(bundle.driver)
+                current_signature = page_state_signature(current_state)
+
+                if handles and len(handles) > len(last_window_handles):
+                    new_handles = [handle for handle in handles if handle not in last_window_handles]
+                    for handle in new_handles:
+                        _append_synthetic("new_window", before_state, current_state, new_window_handle=handle)
+                    session.capture_checkpoint(bundle.driver, "new_window")
+
+                if current_handle and current_handle != before_handle:
+                    _append_synthetic("window_changed", before_state, current_state, previous_window_handle=before_handle)
+
+                if current_state.get("url") != before_state.get("url"):
+                    _append_synthetic("url_changed", before_state, current_state, previous_url=before_state.get("url", ""))
+
+                if current_signature != before_signature:
+                    _append_synthetic("dom_changed", before_state, current_state)
+                    previous_signature = current_signature
+                    self._capture_current(bundle, reason="record_state_change")
+
+                if current_state.get("modal_count") != before_state.get("modal_count"):
+                    action = "modal_visible" if int(current_state.get("modal_count", 0) or 0) > int(before_state.get("modal_count", 0) or 0) else "modal_hidden"
+                    _append_synthetic(action, before_state, current_state, modal_count=current_state.get("modal_count", 0))
+
+                events = session.poll(bundle.driver)
+                if events:
+                    log_kv(log, "Eventos gravados.", level=logging.INFO, run_id=self.run_id, count=len(events), process=process_name)
+
+                last_window_handles = set(handles)
+                last_handle = current_handle or last_handle
+                previous_state = current_state
+                time.sleep(max(0.15, self.config.record.poll_seconds))
+
+            return 0
+        except KeyboardInterrupt:
+            self._stop_event.set()
+            return 130
+        finally:
+            try:
+                session.finalize(bundle.driver)
+            except Exception:
+                pass
+
     def finalize(self) -> dict[str, Any]:
         return self.recorder.finalize(run_id=self.run_id, settings=self.settings)
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Mapeador autenticado da estrutura do site SOMA.")
-    parser.add_argument("--mode", choices=("manual", "controlled"), default="manual", help="Modo de execução.")
+    parser.add_argument("--mode", choices=("manual", "controlled", "record"), default="manual", help="Modo de execução.")
     parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="Caminho para o site_mapper.json.")
     parser.add_argument("--run-id", default="", help="Identificador do run. Se omitido, é gerado automaticamente.")
     parser.add_argument("--headless", dest="headless", action="store_true", help="Executar o browser em headless.")
@@ -780,7 +940,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_arg_parser().parse_args(argv)
+    parser = build_arg_parser()
+    args = parser.parse_args(argv)
+    if args.mode == "record" and args.headless is True:
+        parser.error("--mode record exige browser visível; remova --headless ou use --no-headless.")
     settings = _load_settings()
     config = load_site_mapper_config(args.config)
     run_id = args.run_id.strip() or new_run_id(12)
@@ -788,7 +951,13 @@ def main(argv: list[str] | None = None) -> int:
     configure_logging(settings)
     ensure_artifacts_dirs(settings)
 
-    runner = SiteMapRunner(settings, config=config, run_id=run_id, headless=args.headless)
+    runner = SiteMapRunner(
+        settings,
+        config=config,
+        run_id=run_id,
+        mode=args.mode,
+        headless=False if args.mode == "record" else args.headless,
+    )
     bundle = None
     exit_code = 1
 
@@ -797,8 +966,10 @@ def main(argv: list[str] | None = None) -> int:
             bundle = runner._build_bundle()
             if args.mode == "manual":
                 exit_code = runner.run_manual(bundle)
-            else:
+            elif args.mode == "controlled":
                 exit_code = runner.run_controlled(bundle)
+            else:
+                exit_code = runner.run_record(bundle)
             summary = runner.finalize()
             log_kv(
                 log,
