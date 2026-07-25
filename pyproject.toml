@@ -46,3 +46,7 @@ ignore = ["E501"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-q"
+markers = [
+  "e2e: end-to-end browser smoke tests",
+]
+norecursedirs = ["tests/e2e"]

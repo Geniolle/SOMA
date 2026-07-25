@@ -383,13 +383,16 @@ def test_pause_discards_pending_and_paused_events(tmp_path):
     recorder = _make_recorder(tmp_path)
     driver = FakeDriver()
     driver.current_context["queue"] = [{"action": "click", "tag": "button", "text": "Antes"}]
+    driver.add_window("w2", queue=[{"action": "click", "tag": "button", "text": "Outra janela"}])
 
     recorder.pause(driver)
     assert driver.current_context["queue"] == []
 
     driver.current_context["queue"] = [{"action": "click", "tag": "button", "text": "Durante"}]
+    driver.contexts[("w2", ())]["queue"] = [{"action": "click", "tag": "button", "text": "Durante w2"}]
     assert recorder.poll(driver) == []
     assert driver.current_context["queue"] == []
+    assert driver.contexts[("w2", ())]["queue"] == []
 
     recorder.resume(driver)
     driver.current_context["queue"] = [{"action": "click", "tag": "button", "text": "Depois"}]
@@ -397,21 +400,48 @@ def test_pause_discards_pending_and_paused_events(tmp_path):
 
     texts = [item.get("text") for item in recorder.raw_events]
     assert "Durante" not in texts
+    assert "Durante w2" not in texts
     assert "Depois" in texts
 
 
-def test_request_stop_flushes_last_pending_event(tmp_path):
+def test_request_stop_preserves_last_pending_event_and_marks_stop(tmp_path):
     recorder = _make_recorder(tmp_path)
     driver = FakeDriver()
     driver.current_context["queue"] = [
         {"action": "click", "tag": "button", "text": "Último clique"}
     ]
 
-    recorder.request_stop(driver)
+    recorder.process_command("q", driver)
 
     assert recorder.stopped is True
     assert any(item.get("text") == "Último clique" for item in recorder.raw_events)
     assert any(item.get("label") == "stop" for item in recorder.raw_events)
+
+
+def test_request_stop_flushes_multiple_windows(tmp_path):
+    recorder = _make_recorder(tmp_path)
+    driver = FakeDriver()
+    driver.current_context["queue"] = [{"action": "click", "tag": "button", "text": "Janela principal"}]
+    driver.add_window("w2", queue=[{"action": "click", "tag": "button", "text": "Janela secundária"}])
+
+    recorder.request_stop(driver)
+
+    texts = [item.get("text") for item in recorder.raw_events]
+    assert "Janela principal" in texts
+    assert "Janela secundária" in texts
+    assert any(item.get("label") == "stop" for item in recorder.raw_events)
+
+
+def test_flush_final_collects_last_pending_event(tmp_path):
+    recorder = _make_recorder(tmp_path)
+    driver = FakeDriver()
+    driver.current_context["queue"] = [
+        {"action": "click", "tag": "button", "text": "Último clique"}
+    ]
+
+    recorder.flush_final(driver)
+
+    assert any(item.get("text") == "Último clique" for item in recorder.raw_events)
 
 
 def test_poll_reinjects_after_navigation_and_tracks_new_window(tmp_path):

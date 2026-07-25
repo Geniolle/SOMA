@@ -1179,16 +1179,40 @@ class InteractionRecorder:
         self.raw_events.append(payload)
         return payload
 
+    def record_checkpoint_event(self, driver: Any, label: str) -> dict[str, Any]:
+        state = collect_page_state(driver)
+        payload = _sanitize_raw_event(
+            {
+                "action": "checkpoint",
+                "label": sanitize_text(label),
+                "timestamp": utc_now_iso(),
+                "page_url": state.get("url", ""),
+                "page_title": state.get("title", ""),
+                "window_index": state.get("window_index", 0),
+                "window_handle": state.get("window_handle", ""),
+                "iframe_path": state.get("iframe_path", "top"),
+                "before_signature": page_state_signature(state),
+                "after_signature": page_state_signature(state),
+            }
+        )
+        self.raw_events.append(payload)
+        return payload
+
     def pause(self, driver: Any | None = None) -> None:
         if driver is not None:
-            self._collect_all_windows(driver, discard=True)
+            try:
+                current_context = getattr(driver, "current_context", None)
+                if isinstance(current_context, dict) and "queue" in current_context:
+                    current_context["queue"] = []
+            except Exception:
+                pass
         self.paused = True
         if driver is not None:
             self.record_marker(driver, "pause")
 
     def resume(self, driver: Any | None = None) -> None:
         if driver is not None:
-            self._collect_all_windows(driver, discard=True)
+            self._discard_current_context(driver)
         self.paused = False
         if driver is not None:
             self.record_marker(driver, "resume")
@@ -1202,7 +1226,7 @@ class InteractionRecorder:
     def process_command(self, command: str, driver: Any) -> str:
         cmd = normalize_text(command)
         if not cmd:
-            self.capture_checkpoint(driver, "checkpoint", timeout_seconds=self.capture_timeout_seconds)
+            self.record_checkpoint_event(driver, "checkpoint")
             return "checkpoint"
         if cmd in {"q", "quit", "exit", "done", "finish"}:
             self.request_stop(driver)
@@ -1267,7 +1291,7 @@ class InteractionRecorder:
             {"status": "finalizing", "process_name": self.process_name, "updated_at": utc_now_iso()},
         )
         try:
-            if driver is not None:
+            if driver is not None and not self.stopped:
                 self.flush_final(driver)
             workflow = consolidate_events(self.raw_events)
             steps: list[dict[str, Any]] = []

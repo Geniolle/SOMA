@@ -29,6 +29,8 @@ from soma_app.automation.dom_inventory import (
     sanitize_text,
 )
 from soma_app.automation.interaction_recorder import InteractionRecorder, collect_page_state, page_state_signature
+from soma_app.automation.pages.caixas_bancos_page import CaixasBancosPage
+from soma_app.automation.pages.entradas_saidas_page import EntradasSaidasPage
 from soma_app.automation.pages.login_page import LoginPage
 from soma_app.config.locators import _coerce_locator, _coerce_locator_list, load_page_locator_config
 from soma_app.config.settings import Settings
@@ -552,54 +554,39 @@ class SiteMapRunner:
         return thread
 
     def _capture_record_checkpoint(self, bundle: Any, session: InteractionRecorder, label: str) -> bool:
-        timeout_seconds = max(0.25, float(self.config.record.initial_capture_timeout_seconds))
-        log_kv(log, "[record] A iniciar checkpoint inicial", level=logging.INFO, run_id=self.run_id, timeout_seconds=timeout_seconds)
-        done = threading.Event()
-        result: dict[str, Any] = {}
-
-        def _worker() -> None:
-            try:
-                result["payload"] = session.capture_checkpoint(
-                    bundle.driver,
-                    label,
-                    timeout_seconds=timeout_seconds,
-                )
-            except Exception as exc:
-                result["error"] = exc
-            finally:
-                done.set()
-
-        thread = threading.Thread(target=_worker, daemon=True, name=f"soma-record-{label}")
-        thread.start()
-
-        deadline = time.monotonic() + timeout_seconds
-        poll_interval = min(0.25, max(0.05, timeout_seconds / 10.0))
-        while not done.wait(poll_interval):
-            self._drain_commands(bundle, session)
-            if self._stop_event.is_set() or session.stopped:
-                log_kv(log, "[record] Checkpoint inicial interrompido por comando do utilizador.", level=logging.INFO, run_id=self.run_id)
-                return False
-            if time.monotonic() >= deadline:
-                log_kv(log, "[record] Checkpoint inicial excedeu o tempo limite.", level=logging.WARNING, run_id=self.run_id, timeout_seconds=timeout_seconds)
-                return False
-
-        if "error" in result:
-            log_kv(log, "[record] Checkpoint inicial falhou.", level=logging.WARNING, run_id=self.run_id, err=str(result["error"]))
+        print("[record] A iniciar checkpoint inicial", flush=True)
+        log_kv(log, "[record] A iniciar checkpoint inicial", level=logging.INFO, run_id=self.run_id, mode="lightweight")
+        try:
+            if hasattr(session, "record_checkpoint_event"):
+                session.record_checkpoint_event(bundle.driver, label)
+            else:
+                timeout_seconds = max(0.25, float(self.config.record.initial_capture_timeout_seconds))
+                log_kv(log, "[record] Fallback para checkpoint completo.", level=logging.WARNING, run_id=self.run_id, timeout_seconds=timeout_seconds)
+                session.capture_checkpoint(bundle.driver, label, timeout_seconds=timeout_seconds)
+        except Exception as exc:
+            log_kv(log, "[record] Checkpoint inicial falhou.", level=logging.WARNING, run_id=self.run_id, err=str(exc))
+            print("[record] Checkpoint inicial falhou.", flush=True)
             return False
 
         log_kv(log, "[record] Checkpoint inicial concluído.", level=logging.INFO, run_id=self.run_id)
+        print("[record] Checkpoint inicial concluído.", flush=True)
         return True
 
     def _bootstrap_record_mode(self, bundle: Any, session: InteractionRecorder, process_name: str) -> bool:
+        print("[record] A instalar recorder", flush=True)
         log_kv(log, "[record] A instalar recorder", level=logging.INFO, run_id=self.run_id, process=process_name)
         self._start_command_reader()
+        print("[record] Leitor de comandos iniciado", flush=True)
         log_kv(log, "[record] Leitor de comandos iniciado", level=logging.INFO, run_id=self.run_id)
+        print("Modo record ativo. Comandos: Enter=checkpoint, mark=marcador, pause=pausa, resume=retoma, q=finalizar.", flush=True)
         log.info("Modo record ativo. Comandos: Enter=checkpoint, mark=marcador, pause=pausa, resume=retoma, q=finalizar.")
 
         try:
             session.install(bundle.driver)
+            print("[record] Recorder instalado", flush=True)
             log_kv(log, "[record] Recorder instalado", level=logging.INFO, run_id=self.run_id)
         except Exception as exc:
+            print(f"[record] Falha ao instalar recorder. err={exc}", flush=True)
             log_kv(log, "[record] Falha ao instalar recorder.", level=logging.WARNING, run_id=self.run_id, err=str(exc))
 
         checkpoint_ok = self._capture_record_checkpoint(bundle, session, "record_start")
@@ -612,24 +599,73 @@ class SiteMapRunner:
             )
         return checkpoint_ok
 
-    def _drain_commands(self, bundle: Any, recorder: InteractionRecorder) -> None:
+    def _drain_commands(self, bundle: Any, recorder: InteractionRecorder) -> bool:
+        processed = False
         while True:
             try:
                 command = self._command_queue.get_nowait()
             except queue.Empty:
-                return
+                return processed
+            print(f"[record] A processar comando: {command or 'checkpoint'}", flush=True)
+            log_kv(log, "[record] A processar comando.", level=logging.INFO, run_id=self.run_id, command=command or "checkpoint")
+            if command.startswith("__smoke__:"):
+                result = self._run_smoke_command(bundle, recorder, command)
+                processed = True
+                print(f"[record] Comando processado: {result}", flush=True)
+                log_kv(log, "[record] Comando processado.", level=logging.INFO, run_id=self.run_id, command=result)
+                continue
             result = recorder.process_command(command, bundle.driver)
+            processed = True
+            print(f"[record] Comando processado: {result}", flush=True)
+            log_kv(log, "[record] Comando processado.", level=logging.INFO, run_id=self.run_id, command=result)
             if result == "checkpoint":
+                print("[record] Checkpoint manual registado.", flush=True)
                 log_kv(log, "Checkpoint manual registado.", level=logging.INFO, run_id=self.run_id)
             elif result == "mark":
+                print("[record] Marcador registado.", flush=True)
                 log_kv(log, "Marcador registado.", level=logging.INFO, run_id=self.run_id)
             elif result == "pause":
+                print("[record] Gravação pausada.", flush=True)
                 log_kv(log, "Gravação pausada.", level=logging.INFO, run_id=self.run_id)
             elif result == "resume":
+                print("[record] Gravação retomada.", flush=True)
                 log_kv(log, "Gravação retomada.", level=logging.INFO, run_id=self.run_id)
             elif result == "stop":
+                print("[record] Finalização solicitada.", flush=True)
                 self._stop_event.set()
-                return
+                return True
+
+    def _run_smoke_command(self, bundle: Any, recorder: InteractionRecorder, command: str) -> str:
+        if command == "__smoke__:pause_menu":
+            page = CaixasBancosPage(bundle.a, self.settings)
+            page._open_menu()
+            print("[record] Smoke action concluída: pause_menu.", flush=True)
+            return "smoke_pause_menu"
+        if command == "__smoke__:resume_new_form":
+            page = EntradasSaidasPage(bundle.a, self.settings)
+            page._click_menu_entradas_saidas(timeout_seconds=30)
+            page._click_nova(timeout_seconds=30)
+            try:
+                bundle.a.wait_present(page.DESCRICAO, timeout_seconds=30)
+            except Exception:
+                pass
+            try:
+                recorder.record_marker(bundle.driver, "smoke_resume_new_form")
+            except Exception:
+                pass
+            print("[record] Smoke action concluída: resume_new_form.", flush=True)
+            return "smoke_resume_new_form"
+        if command == "__smoke__:final_note":
+            page = EntradasSaidasPage(bundle.a, self.settings)
+            bundle.a.type(page.DESCRICAO, "Smoke final note")
+            try:
+                recorder.record_marker(bundle.driver, "smoke_final_note")
+            except Exception:
+                pass
+            print("[record] Smoke action concluída: final_note.", flush=True)
+            return "smoke_final_note"
+        print(f"[record] Smoke action desconhecida: {command}", flush=True)
+        return "smoke_unknown"
 
     def _capture_current(self, bundle: Any, *, reason: str) -> PageSnapshot | None:
         try:
@@ -900,15 +936,14 @@ class SiteMapRunner:
         )
         self.record_session = session
         self._bootstrap_record_mode(bundle, session, process_name)
+        print("[record] Ciclo principal de gravação ativo", flush=True)
 
-        previous_state = collect_page_state(bundle.driver)
-        previous_signature = page_state_signature(previous_state)
-        last_window_handles = set()
-        try:
-            last_window_handles = set(bundle.driver.window_handles)
-        except Exception:
-            last_window_handles = set()
-        last_handle = str(getattr(bundle.driver, "current_window_handle", "") or "")
+        previous_state: dict[str, Any] = {}
+        previous_signature = ""
+        last_window_handles: set[str] = set()
+        last_handle = ""
+        last_command_at = 0.0
+        command_grace_seconds = max(0.5, float(self.config.record.poll_seconds) * 2.0)
 
         def _append_synthetic(action: str, before_state: Mapping[str, Any], after_state: Mapping[str, Any], **extra: Any) -> None:
             payload = {
@@ -928,9 +963,16 @@ class SiteMapRunner:
 
         try:
             while not self._stop_event.is_set() and not session.stopped:
-                self._drain_commands(bundle, session)
+                drained = self._drain_commands(bundle, session)
                 if self._stop_event.is_set() or session.stopped:
                     break
+                if drained:
+                    last_command_at = time.monotonic()
+                    time.sleep(0.05)
+                    continue
+                if last_command_at and (time.monotonic() - last_command_at) < command_grace_seconds:
+                    time.sleep(0.05)
+                    continue
 
                 before_state = previous_state
                 before_signature = previous_signature

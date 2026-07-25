@@ -23,6 +23,14 @@ class FakeSession:
     def install(self, driver) -> None:
         self.calls.append("install")
 
+    def record_checkpoint_event(self, driver, label: str):
+        self.calls.append(f"checkpoint_event:{label}")
+        if self.delay:
+            time.sleep(self.delay)
+        if self.should_fail:
+            raise RuntimeError("checkpoint failed")
+        return {"label": label}
+
     def capture_checkpoint(self, driver, label: str, *, timeout_seconds: float | None = None):
         self.calls.append(f"checkpoint:{label}")
         if self.delay:
@@ -51,7 +59,7 @@ def test_record_bootstrap_starts_reader_before_initial_checkpoint(tmp_path):
     ok = runner._bootstrap_record_mode(bundle, session, "Teste SOMA Codex")
 
     assert ok is True
-    assert calls[:3] == ["reader", "install", "checkpoint:record_start"]
+    assert calls[:3] == ["reader", "install", "checkpoint_event:record_start"]
 
 
 def test_record_checkpoint_failure_does_not_block_bootstrap(tmp_path):
@@ -69,4 +77,4 @@ def test_record_checkpoint_failure_does_not_block_bootstrap(tmp_path):
     assert ok is False
     assert elapsed < 1.0
     assert calls[0] == "reader"
-    assert "checkpoint:record_start" in calls
+    assert "checkpoint_event:record_start" in calls
