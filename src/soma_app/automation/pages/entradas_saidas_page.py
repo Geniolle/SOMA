@@ -14,6 +14,7 @@ from selenium.webdriver.support.ui import Select
 from soma_app.automation.actions import Actions
 from soma_app.config.locators import apply_locator_overrides
 from soma_app.domain.models import ContaOrdemRow, TipoMovimento
+from soma_app.infra.env import env_bool, env_int
 from soma_app.infra.trace import log_kv, step
 
 log = logging.getLogger("soma_app.pages.entradas_saidas")
@@ -62,12 +63,12 @@ class EntradasSaidasPage:
     FORMA_PAGAMENTO_ENTRADA_CANDIDATES = []
 
     # =========
-    # CAMPOS SAÍDA
+    # CAMPOS SAÃDA
     # =========
     DATA_VENCIMENTO_SAIDA = (By.XPATH, "")
 
     # =========
-    # BOTÕES (form)
+    # BOTÃ•ES (form)
     # =========
     BTN_SALVAR_FORM = (By.XPATH, "")
     BTN_VOLTAR = (By.XPATH, "")
@@ -125,6 +126,7 @@ class EntradasSaidasPage:
     def __init__(self, actions: Actions, settings: Any):
         self.a = actions
         self.settings = settings
+        self.detailed_logging = env_bool("DETAILED_RUN_LOGGING", False)
         self.base_ivv = (getattr(settings, "site_home_url", "") or "https://verbodavida.info/IVV/").rstrip("/") + "/"
         apply_locator_overrides(self, "entradas_saidas")
         self.RADIO_ANY_CANDIDATES = self.RADIO_SAIDA_CANDIDATES + self.RADIO_ENTRADA_CANDIDATES
@@ -137,10 +139,19 @@ class EntradasSaidasPage:
 
         self.strict_caixa = bool(getattr(settings, "STRICT_CAIXA_MATCH", True))
 
-        self.caixa_validate_sleep = float(getattr(settings, "CAIXA_VALIDATE_SLEEP", 1.2))
-        self.caixa_validate_retries = int(getattr(settings, "CAIXA_VALIDATE_RETRIES", 3))
-        self.caixa_stable_checks = int(getattr(settings, "CAIXA_STABLE_CHECKS", 2))
-        self.caixa_stable_interval = float(getattr(settings, "CAIXA_STABLE_INTERVAL", 0.4))
+        self.caixa_validate_sleep = float(getattr(settings, "CAIXA_VALIDATE_SLEEP", 0.35))
+        self.caixa_validate_retries = int(getattr(settings, "CAIXA_VALIDATE_RETRIES", 2))
+        self.caixa_stable_checks = int(getattr(settings, "CAIXA_STABLE_CHECKS", 1))
+        self.caixa_stable_interval = float(getattr(settings, "CAIXA_STABLE_INTERVAL", 0.2))
+        self.search_doc_attempts = max(1, env_int("SEARCH_DOC_ATTEMPTS", 2))
+        self.search_doc_retry_delay = max(0, env_int("SEARCH_DOC_RETRY_DELAY_SECONDS", 1))
+        self.search_doc_result_timeout = max(2, env_int("SEARCH_DOC_RESULT_TIMEOUT_SECONDS", 8))
+        self.search_doc_broader_timeout = max(2, env_int("SEARCH_DOC_BROADER_TIMEOUT_SECONDS", 8))
+        self.search_back_dom_timeout = max(1, env_int("SEARCH_DOC_BACK_DOM_TIMEOUT_SECONDS", 2))
+        self.search_back_visible_timeout = max(1, env_int("SEARCH_DOC_BACK_VISIBLE_TIMEOUT_SECONDS", 1))
+        self.search_direct_dom_timeout = max(1, env_int("SEARCH_DOC_DIRECT_DOM_TIMEOUT_SECONDS", 2))
+        self.search_direct_visible_timeout = max(1, env_int("SEARCH_DOC_DIRECT_VISIBLE_TIMEOUT_SECONDS", 2))
+        self.search_list_ready_timeout = max(2, env_int("SEARCH_DOC_LIST_READY_TIMEOUT_SECONDS", 3))
 
     # -----------------------
     # helpers de log/console
@@ -149,7 +160,7 @@ class EntradasSaidasPage:
     def _safe(v: Any, max_len: int = 160) -> str:
         s = "" if v is None else str(v)
         s = " ".join(s.split())
-        return s[:max_len] + ("…" if len(s) > max_len else "")
+        return s[:max_len] + ("â€¦" if len(s) > max_len else "")
 
     @staticmethod
     def _norm(s: str) -> str:
@@ -157,12 +168,23 @@ class EntradasSaidasPage:
         s2 = "".join(ch for ch in s2 if not unicodedata.combining(ch))
         return " ".join(s2.strip().lower().split())
 
+    def _is_transferencia_bancaria(self, value: Any) -> bool:
+        return self._norm(str(value)) == "transferencia bancaria"
+
     def _emit(self, msg: str, level: int = logging.INFO, **kv: Any) -> None:
-        print(msg)
+        if self.detailed_logging:
+            print(msg)
         try:
             log_kv(log, msg, level=level, **kv)
         except Exception:
             log.log(level, msg)
+
+    def _confirm(self, step_name: str, *, row: ContaOrdemRow | None = None, **kv: Any) -> None:
+        payload: dict[str, Any] = dict(kv)
+        if row is not None:
+            payload.setdefault("row", row.row_number)
+            payload.setdefault("tipo", row.tipo.value)
+        self._emit(f"Passo '{step_name}' concluÃ­do com sucesso.", **payload)
 
     def _exists_any(self, locators: Iterable[Tuple[str, str]], timeout_seconds: int = 1) -> bool:
         for loc in locators:
@@ -221,7 +243,7 @@ class EntradasSaidasPage:
         except Exception as e:
             p = self.a.screenshot(f"entradas_saidas_{field.lower()}_opener_missing_row_{row.row_number}")
             raise TimeoutException(
-                f"{field}: opener do Select2 não apareceu | value='{self._safe(value)}' | screenshot={p}"
+                f"{field}: opener do Select2 nÃ£o apareceu | value='{self._safe(value)}' | screenshot={p}"
             ) from e
 
         for loc in unique:
@@ -235,7 +257,7 @@ class EntradasSaidasPage:
 
         p = self.a.screenshot(f"entradas_saidas_{field.lower()}_select2_fail_row_{row.row_number}")
         raise RuntimeError(
-            f"{field}: não consegui selecionar '{self._safe(value)}' no Select2. "
+            f"{field}: nÃ£o consegui selecionar '{self._safe(value)}' no Select2. "
             f"last_err={last_error} | screenshot={p}"
         )
 
@@ -259,7 +281,7 @@ class EntradasSaidasPage:
         except Exception as e:
             p = self.a.screenshot(f"entradas_saidas_{field.lower()}_missing_row_{row.row_number}")
             raise TimeoutException(
-                f"{field}: campo não apareceu | value='{self._safe(value)}' | screenshot={p}"
+                f"{field}: campo nÃ£o apareceu | value='{self._safe(value)}' | screenshot={p}"
             ) from e
 
         for loc in unique:
@@ -283,7 +305,7 @@ class EntradasSaidasPage:
 
         p = self.a.screenshot(f"entradas_saidas_{field.lower()}_fill_fail_row_{row.row_number}")
         raise RuntimeError(
-            f"{field}: campo não confirmou preenchimento. esperado='{self._safe(value)}' | "
+            f"{field}: campo nÃ£o confirmou preenchimento. esperado='{self._safe(value)}' | "
             f"atual='{self._safe(last_seen)}' | screenshot={p} | last_err={last_error}"
         )
 
@@ -341,14 +363,14 @@ class EntradasSaidasPage:
             chosen = self._select_first_text(select_el)
             if strict and not self._match_ok(desired, chosen):
                 raise RuntimeError(
-                    f"{field}: seleção ambígua/incorreta. desejado='{desired}' | selecionado='{chosen}' | opções={options}"
+                    f"{field}: seleÃ§Ã£o ambÃ­gua/incorreta. desejado='{desired}' | selecionado='{chosen}' | opÃ§Ãµes={options}"
                 )
             return chosen
 
         chosen = self._select_first_text(select_el)
         if strict:
             raise RuntimeError(
-                f"{field}: não encontrei opção para '{desired}'. selecionado_atual='{chosen}' | opções={options}"
+                f"{field}: nÃ£o encontrei opÃ§Ã£o para '{desired}'. selecionado_atual='{chosen}' | opÃ§Ãµes={options}"
             )
         return chosen
 
@@ -361,7 +383,7 @@ class EntradasSaidasPage:
         field: str,
         strict: bool,
     ) -> str:
-        self._wait_select_ready(resolve_select, timeout_seconds=10, min_options=2)
+        self._wait_select_ready(resolve_select, timeout_seconds=6, min_options=1)
 
         desired = (desired_text or "").strip()
         last_seen = ""
@@ -413,7 +435,7 @@ class EntradasSaidasPage:
                     pass
 
                 self._emit(
-                    f"Aviso: {field} alterou após seleção. tentativa {attempt}/{self.caixa_validate_retries} | "
+                    f"Aviso: {field} alterou apÃ³s seleÃ§Ã£o. tentativa {attempt}/{self.caixa_validate_retries} | "
                     f"esperado='{desired}' | agora='{last_seen}'. Reaplicando...",
                     level=logging.WARNING,
                     row=row.row_number,
@@ -431,7 +453,7 @@ class EntradasSaidasPage:
                 except Exception:
                     pass
                 self._emit(
-                    f"Aviso: {field} ficou stale durante a seleção. tentativa {attempt}/{self.caixa_validate_retries}. Reaplicando...",
+                    f"Aviso: {field} ficou stale durante a seleÃ§Ã£o. tentativa {attempt}/{self.caixa_validate_retries}. Reaplicando...",
                     level=logging.WARNING,
                     row=row.row_number,
                     tipo=row.tipo.value,
@@ -449,7 +471,7 @@ class EntradasSaidasPage:
                 )
             except Exception:
                 pass
-            raise RuntimeError(f"{field}: não manteve a seleção. esperado='{desired}' | final='{last_seen}'")
+            raise RuntimeError(f"{field}: nÃ£o manteve a seleÃ§Ã£o. esperado='{desired}' | final='{last_seen}'")
         return last_seen
 
     # -----------------------
@@ -462,7 +484,7 @@ class EntradasSaidasPage:
             pass
 
     def _dismiss_overlays(self) -> None:
-        self._dismiss_overlays_with_wait(max_wait_seconds=3)
+        self._dismiss_overlays_with_wait(max_wait_seconds=1)
 
     def _dismiss_overlays_with_wait(self, max_wait_seconds: int = 3) -> None:
         clicked = False
@@ -470,7 +492,7 @@ class EntradasSaidasPage:
             try:
                 if self.a.exists(self.OK_ALERT, timeout_seconds=1):
                     self.a.click_js(self.OK_ALERT)
-                    self._emit("Botão 'OK' clicado com sucesso!")
+                    self._emit("BotÃ£o 'OK' clicado com sucesso!")
                     clicked = True
                     time.sleep(0.2)
                     break
@@ -490,7 +512,7 @@ class EntradasSaidasPage:
                     self.a.wait_invisible(self.SWAL_CONTAINER, timeout_seconds=max_wait_seconds)
                 except Exception:
                     self._emit(
-                        "Aviso: O modal SweetAlert ainda está visível após o tempo de espera.",
+                        "Aviso: O modal SweetAlert ainda estÃ¡ visÃ­vel apÃ³s o tempo de espera.",
                         level=logging.WARNING,
                     )
         except Exception:
@@ -500,15 +522,15 @@ class EntradasSaidasPage:
         loc = self.a.wait_any_present(self.MENU_ENTRADAS_SAIDAS_CANDIDATES, timeout_seconds=timeout_seconds)
         self.a.click_js(loc)
         self.a.wait_dom_ready(15)
-        self._emit("Clicou na opção 'Entradas/Saídas' com sucesso!")
+        self._emit("Clicou na opÃ§Ã£o 'Entradas/SaÃ­das' com sucesso!")
 
     def _click_nova(self, timeout_seconds: int = 30) -> None:
         loc = self.a.wait_any_present(self.BTN_NOVA_CANDIDATES, timeout_seconds=timeout_seconds)
         self.a.click_js(loc)
         self.a.wait_dom_ready(15)
-        self._emit("Clicou no botão 'Nova Entrada/Saída' com sucesso!")
+        self._emit("Clicou no botÃ£o 'Nova Entrada/SaÃ­da' com sucesso!")
 
-    def _ensure_pesquisa_visivel(self, row: ContaOrdemRow) -> None:
+    def _ensure_pesquisa_visivel(self, row: ContaOrdemRow, *, timeout_seconds: int | None = None) -> None:
         if self.a.exists(self.PESQ_DESCRICAO, timeout_seconds=2):
             return
 
@@ -516,11 +538,26 @@ class EntradasSaidasPage:
         self._close_datepicker()
 
         with step(log, "entradas_saidas.ensure_list", row=row.row_number, tipo=row.tipo.value):
-            self._click_menu_entradas_saidas(timeout_seconds=60)
-            self.a.wait_present(self.PESQ_DESCRICAO, timeout_seconds=30)
+            wait_timeout = timeout_seconds if timeout_seconds is not None else self.search_list_ready_timeout
+            self._click_menu_entradas_saidas(timeout_seconds=wait_timeout)
+            self.a.wait_present(self.PESQ_DESCRICAO, timeout_seconds=wait_timeout)
+
+    def _open_search_list_direct(self, row: ContaOrdemRow) -> None:
+        url = f"{self.base_ivv}index.php?mod=ivv&exec=entradas_saidas"
+        with step(log, "entradas_saidas.back_to_list_direct_open", row=row.row_number, tipo=row.tipo.value, url=url):
+            self._emit(
+                "Lista de pesquisa não reapareceu; vou abrir a página diretamente.",
+                level=logging.WARNING,
+                row=row.row_number,
+                tipo=row.tipo.value,
+                url=url,
+            )
+            self.a.driver.get(url)
+            self.a.wait_dom_ready(self.search_direct_dom_timeout)
+            self.a.wait_present(self.PESQ_DESCRICAO, timeout_seconds=self.search_direct_visible_timeout)
 
     # -----------------------
-    # navegação principal
+    # navegaÃ§Ã£o principal
     # -----------------------
     def _wait_new_form_ready(self, row: ContaOrdemRow, timeout_seconds: int = 60) -> None:
         last_err: Exception | None = None
@@ -537,7 +574,7 @@ class EntradasSaidasPage:
                     p = self.a.screenshot(f"entradas_saidas_new_form_row_{row.row_number}_try_{attempt}")
                     log_kv(
                         log,
-                        "Form 'Nova Entrada/Saída' não ficou pronto. Vou tentar novamente.",
+                        "Form 'Nova Entrada/SaÃ­da' nÃ£o ficou pronto. Vou tentar novamente.",
                         level=logging.ERROR,
                         row=row.row_number,
                         tipo=row.tipo.value,
@@ -560,7 +597,7 @@ class EntradasSaidasPage:
                     pass
 
         raise TimeoutException(
-            f"Timeout ao abrir formulário 'Nova Entrada/Saída' (linha {row.row_number}). last_err={last_err}"
+            f"Timeout ao abrir formulÃ¡rio 'Nova Entrada/SaÃ­da' (linha {row.row_number}). last_err={last_err}"
         )
 
     def _open_new(self, row: ContaOrdemRow) -> None:
@@ -581,11 +618,11 @@ class EntradasSaidasPage:
             if row.tipo == TipoMovimento.SAIDA:
                 loc = self.a.wait_any_present(self.RADIO_SAIDA_CANDIDATES, timeout_seconds=30)
                 self.a.click_js(loc)
-                self._emit("Selecionado o botão para o processo de 'Saída'")
+                self._emit("Selecionado o botÃ£o para o processo de 'SaÃ­da'")
             else:
                 loc = self.a.wait_any_present(self.RADIO_ENTRADA_CANDIDATES, timeout_seconds=30)
                 self.a.click_js(loc)
-                self._emit("Selecionado o botão para o processo de 'Entrada'")
+                self._emit("Selecionado o botÃ£o para o processo de 'Entrada'")
             self.a.wait_any_present(self.FORM_READY_CANDIDATES, timeout_seconds=30)
             time.sleep(1)
 
@@ -619,7 +656,7 @@ class EntradasSaidasPage:
                 field="descricao",
                 clear=True,
             )
-            self._emit(f"Descrição preenchida com sucesso: {v}", row=row.row_number, tipo=row.tipo.value)
+            self._emit(f"DescriÃ§Ã£o preenchida com sucesso: {v}", row=row.row_number, tipo=row.tipo.value)
 
         with step(log, "entradas_saidas.fill.valor", row=row.row_number, tipo=row.tipo.value, field="VALOR"):
             self.a.type(self.VALOR, str(row.importancia))
@@ -639,7 +676,7 @@ class EntradasSaidasPage:
                 clear=True,
                 click_first=True,
             )
-            self._emit(f"Descrição preenchida com sucesso: {v}", row=row.row_number, tipo=row.tipo.value)
+            self._emit(f"DescriÃ§Ã£o preenchida com sucesso: {v}", row=row.row_number, tipo=row.tipo.value)
 
     def _fill_entrada_sem_caixa(self, row: ContaOrdemRow) -> None:
         with step(log, "entradas_saidas.fill.data_entrada", row=row.row_number, tipo=row.tipo.value, field="DATA_ENTRADA"):
@@ -664,7 +701,7 @@ class EntradasSaidasPage:
             self._emit(f"Forma de pagamento selecionada com sucesso: {row.forma_pagamento}", row=row.row_number, tipo=row.tipo.value)
 
     def _resolve_caixa_entrada_select(self) -> Any:
-        # re-localiza sempre + clica no container (como no SOMA.py) para forçar carregamento
+        # re-localiza sempre + clica no container (como no SOMA.py) para forÃ§ar carregamento
         self.a.wait_present(self.CAIXA_ENTRADA_CONTAINER, timeout_seconds=10)
         container = self.a.driver.find_element(*self.CAIXA_ENTRADA_CONTAINER)
         try:
@@ -678,9 +715,6 @@ class EntradasSaidasPage:
     def _fill_caixa_entrada_ultima(self, row: ContaOrdemRow) -> None:
         with step(log, "entradas_saidas.fill.caixa_entrada_last", row=row.row_number, tipo=row.tipo.value, field="CAIXA"):
             if self.a.exists(self.CAIXA_ENTRADA_CONTAINER, timeout_seconds=2):
-                # respiro extra pós forma_pagamento (evita stale)
-                time.sleep(0.5)
-
                 try:
                     chosen = self._select_with_sleep_validation(
                         self._resolve_caixa_entrada_select,
@@ -704,7 +738,7 @@ class EntradasSaidasPage:
                 if self.strict_caixa and not self._match_ok(row.caixa, chosen):
                     raise RuntimeError(f"CAIXA_ENTRADA incorreta. esperado='{row.caixa}' | selecionado='{chosen}'")
             else:
-                self._emit("Aviso: Campo de Caixa (Entrada) não encontrado no formulário.", level=logging.WARNING)
+                self._emit("Aviso: Campo de Caixa (Entrada) nÃ£o encontrado no formulÃ¡rio.", level=logging.WARNING)
 
     def _fill_saida(self, row: ContaOrdemRow) -> None:
         with step(
@@ -729,6 +763,7 @@ class EntradasSaidasPage:
                     time.sleep(1)
                     self._dismiss_overlays_with_wait(max_wait_seconds=3)
                     self._emit("Campos principais preenchidos com sucesso")
+                    self._confirm("entradas_saidas.save_form_best_effort", row=row)
             except Exception:
                 pass
 
@@ -741,7 +776,7 @@ class EntradasSaidasPage:
             candidates = self._unique_locators(self.BTN_REALIZAR_PAGAMENTO_CANDIDATES or [self.BTN_REALIZAR_PAGAMENTO])
             if not self._exists_any(candidates, timeout_seconds=2):
                 self._emit(
-                    "Botão de realizar pagamento não apareceu no DOM; vou seguir para o modal/continuação do fluxo.",
+                    "BotÃ£o de realizar pagamento nÃ£o apareceu no DOM; vou seguir para o modal/continuaÃ§Ã£o do fluxo.",
                     level=logging.WARNING,
                     row=row.row_number,
                     tipo=row.tipo.value,
@@ -750,9 +785,10 @@ class EntradasSaidasPage:
 
             loc = self.a.wait_any_present(candidates, timeout_seconds=10)
             self.a.click_js(loc)
-            time.sleep(1)
-            self._dismiss_overlays_with_wait(max_wait_seconds=3)
+            time.sleep(0.3)
+            self._dismiss_overlays_with_wait(max_wait_seconds=2)
             self._emit("Realizar pagamento salvo com sucesso!", row=row.row_number, tipo=row.tipo.value)
+            self._confirm("entradas_saidas.realizar_pagamento", row=row)
 
     def _resolve_caixa_pagamento_modal_select(self) -> Any:
         return self.a.driver.find_element(*self.CAIXA_PAGAMENTO_MODAL)
@@ -764,7 +800,7 @@ class EntradasSaidasPage:
             candidates = self._unique_locators(self.BTN_INSERIR_PAGAMENTO_SAIDA_CANDIDATES or [self.BTN_INSERIR_PAGAMENTO_SAIDA])
             if not self._exists_any(candidates, timeout_seconds=2):
                 self._emit(
-                    "Botão de inserir pagamento não apareceu no DOM; vou seguir sem abrir o modal dedicado.",
+                    "BotÃ£o de inserir pagamento nÃ£o apareceu no DOM; vou seguir sem abrir o modal dedicado.",
                     level=logging.WARNING,
                     row=row.row_number,
                     tipo=row.tipo.value,
@@ -773,13 +809,13 @@ class EntradasSaidasPage:
 
             loc = self.a.wait_any_present(candidates, timeout_seconds=10)
             self.a.click_js(loc)
-            time.sleep(0.8)
+            time.sleep(0.3)
             self._emit("Inserir pagamento salvo com sucesso!", row=row.row_number, tipo=row.tipo.value)
 
             self.a.type(self.DATA_PAGAMENTO_MODAL, row.data_mov)
-            time.sleep(0.5)
+            time.sleep(0.2)
             v = self._input_value(self.DATA_PAGAMENTO_MODAL) or row.data_mov
-            self._emit(f"Data início preenchida com sucesso: {v}", row=row.row_number, tipo=row.tipo.value)
+            self._emit(f"Data inÃ­cio preenchida com sucesso: {v}", row=row.row_number, tipo=row.tipo.value)
 
             fp_el = self.a.driver.find_element(*self.FORMA_PAGAMENTO_MODAL)
             chosen_fp = self._select_best_effort(
@@ -792,9 +828,9 @@ class EntradasSaidasPage:
             self._emit(f"Forma de pagamento selecionada com sucesso: {chosen_fp}", row=row.row_number, tipo=row.tipo.value)
             time.sleep(0.5)
 
-            if (row.forma_pagamento or "").strip().upper() == "TRANSFERÊNCIA BANCÁRIA":
+            if (row.forma_pagamento or "").strip().upper() == "TRANSFERÃŠNCIA BANCÃRIA":
                 self._emit(
-                    "A forma de pagamento é TRANSFERÊNCIA BANCÁRIA. atualizar campo Nº Documento...",
+                    "A forma de pagamento Ã© TRANSFERÃŠNCIA BANCÃRIA. atualizar campo NÂº Documento...",
                     row=row.row_number,
                     tipo=row.tipo.value,
                 )
@@ -806,7 +842,7 @@ class EntradasSaidasPage:
                         field="num_documento_modal",
                         clear=True,
                     )
-                    self._emit(f"Número do documento preenchido com sucesso: {vdoc}", row=row.row_number, tipo=row.tipo.value)
+                    self._emit(f"NÃºmero do documento preenchido com sucesso: {vdoc}", row=row.row_number, tipo=row.tipo.value)
                 except Exception:
                     pass
 
@@ -824,10 +860,10 @@ class EntradasSaidasPage:
             )
             salvar_loc = self.a.wait_any_present(salvar_candidates, timeout_seconds=10)
             self.a.click_js(salvar_loc)
-            time.sleep(1)
-            self._emit("Botão 'Salvar Pagamento' clicado com sucesso!", row=row.row_number, tipo=row.tipo.value)
-            self._dismiss_overlays_with_wait(max_wait_seconds=3)
-            self._emit("Botão 'OK Baixa' clicado com sucesso!", row=row.row_number, tipo=row.tipo.value)
+            time.sleep(0.3)
+            self._emit("BotÃ£o 'Salvar Pagamento' clicado com sucesso!", row=row.row_number, tipo=row.tipo.value)
+            self._dismiss_overlays_with_wait(max_wait_seconds=2)
+            self._emit("BotÃ£o 'OK Baixa' clicado com sucesso!", row=row.row_number, tipo=row.tipo.value)
 
             if self.strict_caixa and not self._match_ok(row.caixa, chosen_cx):
                 raise RuntimeError(f"CAIXA_PAGAMENTO_MODAL incorreta. esperado='{row.caixa}' | selecionado='{chosen_cx}'")
@@ -838,7 +874,7 @@ class EntradasSaidasPage:
             candidates = self._unique_locators(self.BTN_INSERIR_BAIXA_CANDIDATES or [self.BTN_INSERIR_BAIXA])
             if not self._exists_any(candidates, timeout_seconds=2):
                 self._emit(
-                    "Botão de inserir baixa não apareceu no DOM; vou seguir sem abrir a baixa dedicada.",
+                    "BotÃ£o de inserir baixa nÃ£o apareceu no DOM; vou seguir sem abrir a baixa dedicada.",
                     level=logging.WARNING,
                     row=row.row_number,
                     tipo=row.tipo.value,
@@ -847,13 +883,13 @@ class EntradasSaidasPage:
 
             loc = self.a.wait_any_present(candidates, timeout_seconds=10)
             self.a.click_js(loc)
-            time.sleep(0.8)
+            time.sleep(0.3)
             self._emit("Inserir Baixa salvo com sucesso!", row=row.row_number, tipo=row.tipo.value)
 
             self.a.type(self.DATA_BAIXA, row.data_mov)
-            time.sleep(0.5)
+            time.sleep(0.2)
             v = self._input_value(self.DATA_BAIXA) or row.data_mov
-            self._emit(f"Data início preenchida com sucesso: {v}", row=row.row_number, tipo=row.tipo.value)
+            self._emit(f"Data inÃ­cio preenchida com sucesso: {v}", row=row.row_number, tipo=row.tipo.value)
 
             try:
                 loc = self.a.wait_any_present(self.POPUP_CLICK_CANDIDATES, timeout_seconds=3)
@@ -865,19 +901,20 @@ class EntradasSaidasPage:
             salvar_candidates = self._unique_locators(self.BTN_SALVAR_BAIXA_CANDIDATES or [self.BTN_SALVAR_BAIXA])
             salvar_loc = self.a.wait_any_present(salvar_candidates, timeout_seconds=10)
             self.a.click_js(salvar_loc)
-            time.sleep(1)
+            time.sleep(0.3)
             self._emit("Salvar Baixa salvo com sucesso!", row=row.row_number, tipo=row.tipo.value)
-            self._dismiss_overlays_with_wait(max_wait_seconds=3)
-            self._emit("Botão 'OK Baixa' clicado com sucesso!", row=row.row_number, tipo=row.tipo.value)
+            self._dismiss_overlays_with_wait(max_wait_seconds=2)
+            self._emit("BotÃ£o 'OK Baixa' clicado com sucesso!", row=row.row_number, tipo=row.tipo.value)
+            self._confirm("entradas_saidas.baixa", row=row, data=row.data_mov)
 
     # -----------------------
     # doc search
     # -----------------------
     def _click_radio_force_change(self, locator: Tuple[str, str]) -> None:
-        # a revelação do painel de data é um TOGGLE ligado ao clique do rádio,
-        # não um "show" condicional: clicar de novo num retry (mesma página,
-        # sem reload, painel já visível da tentativa anterior) esconde-o outra
-        # vez. Por isso só clicamos se o rádio ainda não estiver marcado.
+        # a revelaÃ§Ã£o do painel de data Ã© um TOGGLE ligado ao clique do rÃ¡dio,
+        # nÃ£o um "show" condicional: clicar de novo num retry (mesma pÃ¡gina,
+        # sem reload, painel jÃ¡ visÃ­vel da tentativa anterior) esconde-o outra
+        # vez. Por isso sÃ³ clicamos se o rÃ¡dio ainda nÃ£o estiver marcado.
         el = self.a.wait_present(locator, timeout_seconds=30)
         if el.is_selected():
             return
@@ -885,75 +922,94 @@ class EntradasSaidasPage:
 
     def _go_back_to_list_best_effort(self, row: ContaOrdemRow) -> None:
         with step(log, "entradas_saidas.back_to_list_best_effort", row=row.row_number, tipo=row.tipo.value):
-            self._dismiss_overlays()
+            self._dismiss_overlays_with_wait(max_wait_seconds=1)
             self._close_datepicker()
-            if self.a.exists(self.PESQ_DESCRICAO, timeout_seconds=2):
-                return
+
+            with step(log, "entradas_saidas.back_to_list_check_visible", row=row.row_number, tipo=row.tipo.value):
+                if self.a.exists(self.PESQ_DESCRICAO, timeout_seconds=0):
+                    self._confirm("entradas_saidas.back_to_list_best_effort", row=row)
+                    return
 
             used_fallback = False
-            try:
-                if self.a.exists(self.BTN_VOLTAR, timeout_seconds=2):
-                    self.a.click_js(self.BTN_VOLTAR)
-                    self.a.wait_dom_ready(15)
-                    time.sleep(0.5)
-                    used_fallback = True
-            except Exception:
-                pass
 
-            if not self.a.exists(self.PESQ_DESCRICAO, timeout_seconds=2):
+            clicked_back = False
+            with step(log, "entradas_saidas.back_to_list_click_back", row=row.row_number, tipo=row.tipo.value):
                 try:
-                    self.a.driver.back()
-                    self.a.wait_dom_ready(15)
-                    time.sleep(0.5)
-                    used_fallback = True
+                    if self.a.exists(self.BTN_VOLTAR, timeout_seconds=1):
+                        btn = self.a.wait_present(self.BTN_VOLTAR, timeout_seconds=1)
+                        self.a.driver.execute_script("arguments[0].click();", btn)
+                        self.a.wait_dom_ready(self.search_back_dom_timeout)
+                        used_fallback = True
+                        clicked_back = True
                 except Exception:
                     pass
 
-            if not self.a.exists(self.PESQ_DESCRICAO, timeout_seconds=2):
+            with step(log, "entradas_saidas.back_to_list_wait_visible_after_back", row=row.row_number, tipo=row.tipo.value):
+                if not clicked_back:
+                    if not self.a.exists(self.PESQ_DESCRICAO, timeout_seconds=0):
+                        try:
+                            self.a.driver.back()
+                            self.a.wait_dom_ready(self.search_back_dom_timeout)
+                            used_fallback = True
+                        except Exception:
+                            pass
+
+            with step(log, "entradas_saidas.back_to_list_wait_visible_after_driver_back", row=row.row_number, tipo=row.tipo.value):
                 try:
-                    self._dump_search_diagnostics(row, suffix="back_failed")
+                    if clicked_back:
+                        self._open_search_list_direct(row)
+                        self._confirm("entradas_saidas.back_to_list_best_effort", row=row)
+                        return
+
+                    if not self.a.exists(self.PESQ_DESCRICAO, timeout_seconds=0):
+                        try:
+                            self._dump_search_diagnostics(row, suffix="back_failed")
+                        except Exception:
+                            pass
+                        if used_fallback:
+                            self._emit(
+                                "Retorno para a lista exigiu fallback adicional; vou reabrir o painel de pesquisa.",
+                                level=logging.WARNING,
+                                row=row.row_number,
+                                tipo=row.tipo.value,
+                            )
+                        self._open_search_list_direct(row)
                 except Exception:
-                    pass
-                if used_fallback:
-                    self._emit(
-                        "Retorno para a lista exigiu fallback adicional; vou reabrir o painel de pesquisa.",
-                        level=logging.WARNING,
-                        row=row.row_number,
-                        tipo=row.tipo.value,
-                    )
-            self._ensure_pesquisa_visivel(row)
+                    with step(log, "entradas_saidas.back_to_list_ensure_menu", row=row.row_number, tipo=row.tipo.value):
+                        self._ensure_pesquisa_visivel(row, timeout_seconds=self.search_list_ready_timeout)
+            self._confirm("entradas_saidas.back_to_list_best_effort", row=row)
 
     def _search_doc_id_attempt(self, row: ContaOrdemRow) -> str:
         self._go_back_to_list_best_effort(row)
 
         self.a.type(self.PESQ_DESCRICAO, row.descricao_soma)
-        self._emit(f"Campo pesquisar a descrição preenchida com sucesso: {row.descricao_soma}", row=row.row_number, tipo=row.tipo.value)
+        self._emit(f"Campo pesquisar a descriÃ§Ã£o preenchida com sucesso: {row.descricao_soma}", row=row.row_number, tipo=row.tipo.value)
 
         self._click_radio_force_change(self.RADIO_PERIODO)
-        time.sleep(0.5)
-        self._emit("Selecionado o botão de rádio 'Periodo'", row=row.row_number, tipo=row.tipo.value)
+        time.sleep(0.2)
+        self._emit("Selecionado o botÃ£o de rÃ¡dio 'Periodo'", row=row.row_number, tipo=row.tipo.value)
 
         self._click_radio_force_change(self.RADIO_DATA_PAGAMENTO)
-        time.sleep(0.5)
-        self._emit("Selecionado o botão de rádio 'Data de Pagamento'", row=row.row_number, tipo=row.tipo.value)
+        time.sleep(0.2)
+        self._emit("Selecionado o botÃ£o de rÃ¡dio 'Data de Pagamento'", row=row.row_number, tipo=row.tipo.value)
 
         if not self.a.exists(self.DATA_INI, timeout_seconds=3):
-            # painel pode ter ficado escondido mesmo com o rádio já marcado
-            # (ex.: reset parcial ao voltar à lista); força mais um toggle.
+            # painel pode ter ficado escondido mesmo com o rÃ¡dio jÃ¡ marcado
+            # (ex.: reset parcial ao voltar Ã  lista); forÃ§a mais um toggle.
             self.a.click_js(self.RADIO_DATA_PAGAMENTO)
-            time.sleep(0.5)
+            time.sleep(0.2)
 
         self.a.type(self.DATA_INI, row.data_mov)
-        self._emit(f"Data início preenchida com sucesso: {row.data_mov}", row=row.row_number, tipo=row.tipo.value)
+        self._emit(f"Data inÃ­cio preenchida com sucesso: {row.data_mov}", row=row.row_number, tipo=row.tipo.value)
 
         self.a.type(self.DATA_FIM, row.data_mov)
         self._emit(f"Data fim preenchida com sucesso: {row.data_mov}", row=row.row_number, tipo=row.tipo.value)
 
         self.a.click_js(self.BTN_PESQUISAR)
-        self._emit("Botão 'Pesquisar' clicado com sucesso!", row=row.row_number, tipo=row.tipo.value)
+        self._emit("BotÃ£o 'Pesquisar' clicado com sucesso!", row=row.row_number, tipo=row.tipo.value)
 
         try:
-            doc = self._read_search_result_doc(timeout_seconds=15)
+            doc = self._read_search_result_doc(timeout_seconds=self.search_doc_result_timeout)
         except TimeoutException as e:
             try:
                 self._dump_search_diagnostics(row, suffix="timeout")
@@ -961,10 +1017,10 @@ class EntradasSaidasPage:
                 pass
             if self._exists_any(self.NO_RESULTS_CANDIDATES, timeout_seconds=2):
                 raise RuntimeError(
-                    f"Sem resultados na pesquisa do nº SOMA. desc='{self._safe(row.descricao_soma)}' data='{self._safe(row.data_mov)}'"
+                    f"Sem resultados na pesquisa do nÂº SOMA. desc='{self._safe(row.descricao_soma)}' data='{self._safe(row.data_mov)}'"
                 ) from e
             raise TimeoutException(
-                f"Timeout à espera do RESULT_DOC. desc='{self._safe(row.descricao_soma)}' data='{self._safe(row.data_mov)}'"
+                f"Timeout Ã  espera do RESULT_DOC. desc='{self._safe(row.descricao_soma)}' data='{self._safe(row.data_mov)}'"
             ) from e
 
         if not doc:
@@ -972,9 +1028,10 @@ class EntradasSaidasPage:
                 self._dump_search_diagnostics(row, suffix="empty")
             except Exception:
                 pass
-            raise RuntimeError("Doc ID vazio após pesquisa.")
+            raise RuntimeError("Doc ID vazio apÃ³s pesquisa.")
 
-        self._emit(f"Número do documento extraído: {doc}", row=row.row_number, tipo=row.tipo.value)
+        self._emit(f"NÃºmero do documento extraÃ­do: {doc}", row=row.row_number, tipo=row.tipo.value)
+        self._confirm("entradas_saidas.search_doc", row=row, doc=doc)
         return doc
 
     def _dump_search_diagnostics(self, row: ContaOrdemRow, *, suffix: str) -> None:
@@ -998,50 +1055,64 @@ class EntradasSaidasPage:
             artifact=name,
         )
 
-    def fetch_dados_doc(self, doc_id: str) -> str:
-        url = f"{self.base_ivv}index.php?mod=ivv&exec=entradas_saidas"
-        with step(log, "entradas_saidas.fetch_dados_doc", doc=doc_id, url=url):
-            self._emit(f"Redirecionando para: {url}")
-            self.a.driver.get(url)
-            self.a.wait_dom_ready(20)
-            self._emit("Nova página carregada com sucesso!")
-            candidates = self._unique_locators(self.DADOS_DOC_CANDIDATES or ([self.DADOS_DOC_CELL] if self.DADOS_DOC_CELL[1].strip() else []))
-            end = time.time() + 12
-            last_seen = ""
-            while time.time() < end:
-                for loc in candidates:
-                    try:
-                        if self.a.exists(loc, timeout_seconds=0):
-                            cell = self.a.driver.find_element(*loc)
-                            txt = (cell.text or "").strip()
-                            if txt.isdigit():
-                                self._emit(f"Número do documento extraído: {txt}")
-                                return txt
-                    except Exception:
-                        pass
-
+    def _extract_dados_doc_from_current_page(self, *, timeout_seconds: int = 2) -> str:
+        candidates = self._unique_locators(
+            self.DADOS_DOC_CANDIDATES or ([self.DADOS_DOC_CELL] if self.DADOS_DOC_CELL[1].strip() else [])
+        )
+        end = time.time() + timeout_seconds
+        while time.time() < end:
+            for loc in candidates:
                 try:
-                    cells = self.a.driver.find_elements(By.CSS_SELECTOR, "table tbody tr td")
-                    for cell in cells:
+                    if self.a.exists(loc, timeout_seconds=0):
+                        cell = self.a.driver.find_element(*loc)
                         txt = (cell.text or "").strip()
-                        if not txt:
-                            continue
-                        last_seen = txt
                         if txt.isdigit():
-                            self._emit(f"Número do documento extraído: {txt}")
                             return txt
                 except Exception:
                     pass
 
-                time.sleep(0.25)
+            try:
+                cells = self.a.driver.find_elements(By.CSS_SELECTOR, "table tbody tr td")
+                for cell in cells:
+                    txt = (cell.text or "").strip()
+                    if txt.isdigit():
+                        return txt
+            except Exception:
+                pass
 
-            self._emit(
-                f"Falha ao extrair dados do documento; vou devolver o doc_id original. last_seen='{self._safe(last_seen)}'",
-                level=logging.WARNING,
-                doc=doc_id,
-            )
-            return doc_id
+            time.sleep(0.2)
 
+        raise RuntimeError("DADOS DOC nÃ£o encontrado na pÃ¡gina atual.")
+
+    def fetch_dados_doc(self, doc_id: str) -> str:
+        url = f"{self.base_ivv}index.php?mod=ivv&exec=entradas_saidas"
+        with step(log, "entradas_saidas.fetch_dados_doc", doc=doc_id, url=url):
+            try:
+                txt = self._extract_dados_doc_from_current_page(timeout_seconds=2)
+                self._emit(f"Número do documento extraído da página atual: {txt}")
+                self._confirm("entradas_saidas.fetch_dados_doc", doc=txt, url=url, mode="current_page")
+                return txt
+            except Exception:
+                pass
+
+            self._emit(f"Redirecionando para: {url}")
+            self.a.driver.get(url)
+            self.a.wait_dom_ready(10)
+            self._emit("Nova página carregada com sucesso!")
+
+            try:
+                txt = self._extract_dados_doc_from_current_page(timeout_seconds=6)
+                self._emit(f"Número do documento extraído: {txt}")
+                self._confirm("entradas_saidas.fetch_dados_doc", doc=txt, url=url, mode="fallback_page")
+                return txt
+            except Exception:
+                self._emit(
+                    "Falha ao extrair dados do documento; vou devolver o doc_id original.",
+                    level=logging.WARNING,
+                    doc=doc_id,
+                )
+                self._confirm("entradas_saidas.fetch_dados_doc", doc=doc_id, url=url, mode="fallback_doc_id")
+                return doc_id
     def recover_doc_id(self, row: ContaOrdemRow) -> str:
         return self._search_doc_id(row)
 
@@ -1060,18 +1131,33 @@ class EntradasSaidasPage:
 
             self._save_form_if_present(row)
 
+            if self._is_transferencia_bancaria(row.forma_pagamento):
+                if row.tipo == TipoMovimento.SAIDA:
+                    self._realizar_pagamento(row)
+                    self._pagamento_saida_modal(row)
+                    self._do_baixa(row)
+                else:
+                    self._realizar_pagamento(row)
+                    self._do_baixa(row)
+
+                doc = self._search_doc_id(row)
+                log_kv(log, "Documento criado.", level=logging.INFO, row=row.row_number, tipo=row.tipo.value, doc=doc)
+                self._confirm("entradas_saidas.create_start", row=row, doc=doc)
+                return doc
+
             if row.tipo == TipoMovimento.SAIDA:
                 self._realizar_pagamento(row)
                 self._pagamento_saida_modal(row)
-                if (row.forma_pagamento or "").strip().upper() == "TRANSFERÊNCIA BANCÁRIA":
+                if (row.forma_pagamento or "").strip().upper() == "TRANSFERÃŠNCIA BANCÃRIA":
                     self._do_baixa(row)
             else:
-                if (row.forma_pagamento or "").strip().upper() == "TRANSFERÊNCIA BANCÁRIA":
+                if (row.forma_pagamento or "").strip().upper() == "TRANSFERÃŠNCIA BANCÃRIA":
                     self._realizar_pagamento(row)
                     self._do_baixa(row)
 
             doc = self._search_doc_id(row)
             log_kv(log, "Documento criado.", level=logging.INFO, row=row.row_number, tipo=row.tipo.value, doc=doc)
+            self._confirm("entradas_saidas.create_start", row=row, doc=doc)
             return doc
 
     def _read_search_result_doc(self, timeout_seconds: int = 15) -> str:
@@ -1106,14 +1192,14 @@ class EntradasSaidasPage:
             except Exception:
                 pass
 
-            time.sleep(0.3)
+            time.sleep(0.2)
 
-        raise TimeoutException("Timeout à espera do resultado da pesquisa do nº SOMA.")
+        raise TimeoutException("Timeout Ã  espera do resultado da pesquisa do nÂº SOMA.")
 
     def _search_doc_id(self, row: ContaOrdemRow) -> str:
         with step(log, "entradas_saidas.search_doc", row=row.row_number, tipo=row.tipo.value, data=row.data_mov):
-            attempts = 2
-            delays = (2,)
+            attempts = self.search_doc_attempts
+            delays = (self.search_doc_retry_delay,)
             last_exc: Exception | None = None
             for attempt in range(1, attempts + 1):
                 try:
@@ -1165,7 +1251,7 @@ class EntradasSaidasPage:
     def _search_doc_id_broader(self, row: ContaOrdemRow) -> str:
         windows = self._date_window_variants(row.data_mov)
         if not windows:
-            raise RuntimeError("Não consegui gerar janelas de data para recovery do DOC.")
+            raise RuntimeError("NÃ£o consegui gerar janelas de data para recovery do DOC.")
 
         last_exc: Exception | None = None
         for start_date, end_date in windows:
@@ -1184,13 +1270,14 @@ class EntradasSaidasPage:
                     row=row.row_number,
                     tipo=row.tipo.value,
                 )
-                doc = self._read_search_result_doc(timeout_seconds=12)
+                doc = self._read_search_result_doc(timeout_seconds=self.search_doc_broader_timeout)
                 if doc:
                     self._emit(
-                        f"Número do documento extraído por recovery alargado: {doc}",
+                        f"NÃºmero do documento extraÃ­do por recovery alargado: {doc}",
                         row=row.row_number,
                         tipo=row.tipo.value,
                     )
+                    self._confirm("entradas_saidas.search_doc", row=row, doc=doc, mode="broader")
                     return doc
             except Exception as e:
                 last_exc = e
@@ -1202,4 +1289,5 @@ class EntradasSaidasPage:
             pass
         if last_exc:
             raise last_exc
-        raise RuntimeError("Recovery alargado falhou sem exceção explícita.")
+        raise RuntimeError("Recovery alargado falhou sem exceÃ§Ã£o explÃ­cita.")
+

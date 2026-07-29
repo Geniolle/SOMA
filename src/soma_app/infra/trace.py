@@ -150,6 +150,10 @@ def step(logger: Optional[logging.Logger], name: str, **fields: Any) -> Iterator
             logger.info("[STEP_OK] %s | end_at=%s | dt_ms=%s | %s", name, end_ts, dt_ms, ftxt)
         else:
             logger.info("[STEP_OK] %s | end_at=%s | dt_ms=%s", name, end_ts, dt_ms)
+        if ftxt:
+            logger.info("[STEP_DONE] %s | concluido_com_sucesso | %s", name, ftxt)
+        else:
+            logger.info("[STEP_DONE] %s | concluido_com_sucesso", name)
         _emit_audit("STEP_OK", step=name, end_at=end_ts, dt_ms=dt_ms, **fields)
 
         try:

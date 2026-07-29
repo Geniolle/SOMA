@@ -18,7 +18,8 @@ from soma_app.infra.audit import audit_event, audit_row
 from soma_app.infra.env import env_bool, env_str
 from soma_app.infra.log_config import configure_logging, ensure_artifacts_dirs
 from soma_app.infra.sheets_client import SheetsClient
-from soma_app.infra.trace import new_run_id, step
+from soma_app.infra.soma_api_client import SomaApiClient
+from soma_app.infra.trace import log_kv, new_run_id, step
 from soma_app.infra.webdriver_factory import (
     WebDriverFactory,
     get_chrome_version,
@@ -58,6 +59,12 @@ def _safe_err(e: Exception) -> str:
     return s[:180] if s else type(e).__name__
 
 
+def _progress(enabled: bool, msg: str, **fields: Any) -> None:
+    if not enabled:
+        return
+    log_kv(logger, msg, level=logging.INFO, **fields)
+
+
 def _norm_status(value: Any) -> str:
     return re.sub(r"[^A-Z0-9]+", "", str(value or "").strip().upper())
 
@@ -68,6 +75,46 @@ def _should_recover_doc(raw_row: Dict[str, Any]) -> bool:
     # entre o run que criou o documento e este reprocessamento.
     status_value = raw_row.get(STATUS_COL_DEFAULT, "")
     return _norm_status(status_value) == "PENDENTEDOC"
+
+
+def _bootstrap_api_session(
+    api_client: Any,
+    *,
+    session_token: str = "",
+    has_api_credentials: bool = False,
+    auth_preference: str = "token_first",
+    close_on_exit: bool = False,
+) -> None:
+    token = (session_token or "").strip()
+    preference = (auth_preference or "token_first").strip().lower()
+
+    if preference == "token_first":
+        if token:
+            api_client.use_session_token(token, close_on_exit=close_on_exit)
+            return
+        if has_api_credentials:
+            api_client.open_session()
+        return
+
+    if preference == "login_first":
+        if has_api_credentials:
+            try:
+                api_client.open_session()
+                return
+            except Exception:
+                if token:
+                    logger.warning("Usando SOMA_SESSION_TOKEN como fallback.")
+                    api_client.use_session_token(token, close_on_exit=close_on_exit)
+                    return
+                raise
+        if token:
+            api_client.use_session_token(token, close_on_exit=close_on_exit)
+        return
+
+    if token:
+        api_client.use_session_token(token, close_on_exit=close_on_exit)
+    elif has_api_credentials:
+        api_client.open_session()
 
 
 def _load_settings() -> Any:
@@ -148,6 +195,7 @@ class RunState:
     """
 
     bundle: Any | None = None
+    api_client: Any | None = None
 
 
 @dataclass
@@ -178,7 +226,19 @@ def _bootstrap_backend(
     ws: str,
     headless: bool,
     run_caixas_bancos: bool,
+    detailed_logging: bool = False,
+    backend_mode: str = "selenium",
+    api_first: bool = False,
+    api_fallback_selenium: bool = True,
 ) -> None:
+    _progress(
+        detailed_logging,
+        "A iniciar backend Selenium.",
+        run_id=run_id,
+        sheet=ws,
+        headless=headless,
+        caixas_bancos=run_caixas_bancos,
+    )
     with step(
         logger,
         "run.init",
@@ -209,6 +269,16 @@ def _bootstrap_backend(
         info = get_chromedriver_info(wd)
         chrome_ver = get_chrome_version(wd)
 
+        _progress(
+            detailed_logging,
+            "Backend Selenium pronto.",
+            run_id=run_id,
+            chromedriver=(info.get("version") or "desconhecida"),
+            chrome=(chrome_ver or "desconhecida"),
+            path=(info.get("path") or "n/a"),
+            source=(info.get("source") or "unknown"),
+            dt_ms=dt_drv_ms,
+        )
         logger.warning(
             "ChromeDriver validado | chromedriver=%s | chrome=%s | path=%s | source=%s | dt_ms=%s",
             (info.get("version") or "desconhecida"),
@@ -218,13 +288,35 @@ def _bootstrap_backend(
             dt_drv_ms,
         )
 
+    if backend_mode.strip().lower() == "api" and api_first:
+        api_client = SomaApiClient(
+            base_url=getattr(settings, "soma_api_base_url", "") or "",
+            login=getattr(settings, "soma_api_login", "") or "",
+            password=getattr(settings, "soma_api_password", "") or "",
+            session_token=getattr(settings, "soma_session_token", "") or "",
+            close_on_exit=bool(getattr(settings, "soma_session_token_close", False)),
+            timeout_seconds=int(getattr(settings, "soma_api_timeout", 40) or 40),
+            max_retries=int(getattr(settings, "soma_api_retries", 2) or 2),
+            backoff_seconds=float(getattr(settings, "soma_api_backoff", 0.9) or 0.9),
+        )
+        state.api_client = api_client
+        _bootstrap_api_session(
+            api_client,
+            session_token=getattr(settings, "soma_session_token", "") or "",
+            has_api_credentials=bool((getattr(settings, "soma_api_login", "") or "").strip() and (getattr(settings, "soma_api_password", "") or "").strip()),
+            auth_preference=(getattr(settings, "soma_api_auth_preference", "token_first") or "token_first"),
+            close_on_exit=bool(getattr(settings, "soma_session_token_close", False)),
+        )
+
     if state.bundle is not None:
+        _progress(detailed_logging, "A iniciar login no portal SOMA.", run_id=run_id)
         with step(logger, "run.login_ui", run_id=run_id):
             login = LoginPage(state.bundle.a, settings)
             if hasattr(login, "run"):
                 login.run()
             else:
                 login.login()
+        _progress(detailed_logging, "Login no portal SOMA concluído.", run_id=run_id)
 
 
 def _build_processors(
@@ -247,6 +339,7 @@ def _process_row(
     progress_total: int,
     iduser: str,
     allow_retry: bool,
+    detailed_logging: bool = False,
     entradas_saidas: Any,
     transferencias: Any,
 ) -> RowOutcome:
@@ -256,6 +349,17 @@ def _process_row(
 
     os.environ["ROW_NUMBER"] = str(row_idx)
     row_t0 = time.perf_counter()
+    _progress(
+        detailed_logging,
+        "A processar linha.",
+        run_id=run_id,
+        batch=batch,
+        row=row_idx,
+        tipo=tipo_txt,
+        progress_current=progress_current,
+        progress_total=progress_total,
+        recover=is_recover,
+    )
 
     try:
         with audit_row(
@@ -280,6 +384,15 @@ def _process_row(
                 if row_model.tipo == TipoMovimento.TRANSFERENCIA:
                     doc_id = transferencias.run(row_model)
                     elapsed_ms = int((time.perf_counter() - row_t0) * 1000)
+                    _progress(
+                        detailed_logging,
+                        "Transferência concluída.",
+                        run_id=run_id,
+                        batch=batch,
+                        row=row_idx,
+                        doc_id=doc_id,
+                        elapsed_ms=elapsed_ms,
+                    )
                     audit_event(
                         "ROW_OK",
                         run_id=run_id,
@@ -300,17 +413,38 @@ def _process_row(
                             "Recovery de DOC falhou; vou recriar o lancamento para manter o fluxo continuo. err=%s",
                             _safe_err(recover_exc),
                         )
+                        _progress(
+                            detailed_logging,
+                            "Recovery de DOC falhou; a recriar lançamento.",
+                            run_id=run_id,
+                            batch=batch,
+                            row=row_idx,
+                            err=_safe_err(recover_exc),
+                        )
                         doc_id = entradas_saidas.create_and_get_doc_id(row_model)
                 else:
                     doc_id = entradas_saidas.create_and_get_doc_id(row_model)
 
-                dados_doc = None
-                try:
-                    dados_doc = entradas_saidas.fetch_dados_doc(str(doc_id))
-                except Exception:
-                    dados_doc = None
+                dados_doc = (row_model.dados_doc or "").strip() or None
+                if not dados_doc:
+                    try:
+                        dados_doc = entradas_saidas.fetch_dados_doc(str(doc_id))
+                    except Exception:
+                        dados_doc = None
 
                 elapsed_ms = int((time.perf_counter() - row_t0) * 1000)
+                _progress(
+                    detailed_logging,
+                    "Linha concluída.",
+                    run_id=run_id,
+                    batch=batch,
+                    row=row_idx,
+                    doc_id=doc_id,
+                    recovered=is_recover,
+                    created=not is_recover,
+                    has_dados_doc=bool(dados_doc),
+                    elapsed_ms=elapsed_ms,
+                )
                 audit_event(
                     "ROW_OK",
                     run_id=run_id,
@@ -335,6 +469,16 @@ def _process_row(
     except Exception as e:
         elapsed_ms = int((time.perf_counter() - row_t0) * 1000)
         err_msg = _safe_err(e)
+        _progress(
+            detailed_logging,
+            "Linha com erro.",
+            run_id=run_id,
+            batch=batch,
+            row=row_idx,
+            tipo=tipo_txt,
+            err=err_msg,
+            elapsed_ms=elapsed_ms,
+        )
 
         if _is_pending_doc_exception(e):
             mark_row_error(
@@ -356,6 +500,7 @@ def _process_row(
             )
 
         return RowOutcome(ok=False, elapsed_ms=elapsed_ms)
+
 def _run_batches(
     *,
     settings: Any,
@@ -368,6 +513,7 @@ def _run_batches(
     iduser: str,
     allow_retry: bool,
     run_caixas_bancos: bool,
+    detailed_logging: bool = False,
     entradas_saidas: Any,
     transferencias: Any,
 ) -> RunTotals:
@@ -395,6 +541,13 @@ def _run_batches(
 
         try:
             total_processable = len(processable_rows)
+            _progress(
+                detailed_logging,
+                "A iniciar lote.",
+                run_id=run_id,
+                batch=batch,
+                rows=total_processable,
+            )
             with step(logger, "run.batch", run_id=run_id, batch=batch, rows=total_processable):
                 for progress_current, r in enumerate(processable_rows, start=1):
                     row_idx = int(r["row"])
@@ -409,6 +562,7 @@ def _run_batches(
                         progress_total=total_processable,
                         iduser=iduser,
                         allow_retry=allow_retry,
+                        detailed_logging=detailed_logging,
                         entradas_saidas=entradas_saidas,
                         transferencias=transferencias,
                     )
@@ -426,6 +580,16 @@ def _run_batches(
                     else:
                         totals.err += 1
 
+            _progress(
+                detailed_logging,
+                "Lote concluído.",
+                run_id=run_id,
+                batch=batch,
+                processed=totals.processed,
+                ok=totals.ok,
+                err=totals.err,
+            )
+
         finally:
             if allow_retry:
                 table.load()
@@ -434,12 +598,14 @@ def _run_batches(
                 unlock_still_processing(table, run_rows_live)
 
         batch += 1
+        _progress(detailed_logging, "A preparar próximo lote.", run_id=run_id, next_batch=batch)
         with step(logger, "run.preprocess", run_id=run_id, batch=batch):
             sheets = SheetsClient(settings)
             result = preprocess_contaordem(sheets, ws=ws, run_id=run_id, batch=batch)
         legacy_report.preprocess_summary(result.eligible_total, len(result.workset))
 
         if not result.workset:
+            _progress(detailed_logging, "Fila esvaziada; a executar pós-processos.", run_id=run_id)
             _run_post_processes(
                 settings=settings,
                 bundle=bundle,
@@ -480,19 +646,30 @@ def main() -> int:
     overall_t0 = time.perf_counter()
 
     settings = _load_settings()
-    configure_logging(settings)
-    ensure_artifacts_dirs(settings)
-
     ws = _sheet_name(settings)
     run_id = new_run_id()
     os.environ["RUN_ID"] = run_id
     audit_event("RUN_START", run_id=run_id, sheet=ws)
 
+    detailed_logging = env_bool("DETAILED_RUN_LOGGING", False)
     headless = env_bool("HEADLESS", True)
     allow_retry = env_bool("ALLOW_RETRY_ERROR", False)
     iduser = (env_str("IDUSER", "USERJOB") or "USERJOB").strip() or "USERJOB"
 
     run_caixas_bancos = env_bool("RUN_CAIXAS_BANCOS", default=True)
+
+    configure_logging(settings, console_level="INFO" if detailed_logging else None)
+    ensure_artifacts_dirs(settings)
+
+    _progress(
+        detailed_logging,
+        "Execução iniciada.",
+        run_id=run_id,
+        sheet=ws,
+        headless=headless,
+        allow_retry=allow_retry,
+        caixas_bancos=run_caixas_bancos,
+    )
 
     state = RunState()
     totals = RunTotals()
@@ -502,9 +679,16 @@ def main() -> int:
         sheets = SheetsClient(settings)
         result = preprocess_contaordem(sheets, ws=ws, run_id=run_id, batch=batch)
     legacy_report.preprocess_summary(result.eligible_total, len(result.workset))
+    _progress(
+        detailed_logging,
+        "Pré-processamento inicial concluído.",
+        run_id=run_id,
+        eligible=result.eligible_total,
+        workset=len(result.workset),
+    )
 
     if not result.workset:
-        logger.warning("Nenhum documento pendente. ExecuÃ§Ã£o encerrada sem login/acesso web.")
+        logger.warning("Nenhum documento pendente. Execução encerrada sem login/acesso web.")
     else:
         try:
             _bootstrap_backend(
@@ -514,11 +698,19 @@ def main() -> int:
                 ws=ws,
                 headless=headless,
                 run_caixas_bancos=run_caixas_bancos,
+                detailed_logging=detailed_logging,
             )
 
             entradas_saidas, transferencias = _build_processors(
                 settings=settings,
                 bundle=state.bundle,
+            )
+            _progress(
+                detailed_logging,
+                "Processadores prontos.",
+                run_id=run_id,
+                processor_entradas_saidas=type(entradas_saidas).__name__,
+                processor_transferencias=type(transferencias).__name__,
             )
 
             totals = _run_batches(
@@ -532,6 +724,7 @@ def main() -> int:
                 iduser=iduser,
                 allow_retry=allow_retry,
                 run_caixas_bancos=run_caixas_bancos,
+                detailed_logging=detailed_logging,
                 entradas_saidas=entradas_saidas,
                 transferencias=transferencias,
             )
@@ -565,6 +758,18 @@ def main() -> int:
     )
     print(resumo_txt)
     logger.warning(resumo_txt.replace("\n", " | "))
+    _progress(
+        detailed_logging,
+        "Execução concluída.",
+        run_id=run_id,
+        processed=totals.processed,
+        ok=totals.ok,
+        err=totals.err,
+        created=totals.created,
+        recovered=totals.recovered,
+        transfer=totals.transfer,
+        total_ms=total_elapsed_ms,
+    )
 
     return 0
 

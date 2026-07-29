@@ -39,6 +39,15 @@ def _report(msg: str = "") -> None:
     _logger.info(msg)
 
 
+def _kv(**fields: Any) -> str:
+    parts = []
+    for key, value in fields.items():
+        if value in (None, ""):
+            continue
+        parts.append(f"{key}={value}")
+    return " | ".join(parts)
+
+
 def section(num: str, title: str) -> None:
     if not _ENABLED:
         return
@@ -197,6 +206,9 @@ def on_step_ok(step_name: str, fields: Dict[str, Any], dt_ms: int) -> None:
     Chamado pelo trace.step() quando a etapa termina com sucesso.
     """
     if not _ENABLED:
+        return
+
+    if step_name == "entradas_saidas.open_menu":
         return
 
     _report(f"[STEP_OK] {step_name} | end_at={datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | dt_ms={dt_ms} | {_kv(**fields)}")

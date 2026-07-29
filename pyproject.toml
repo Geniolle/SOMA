@@ -45,7 +45,7 @@ ignore = ["E501"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "-q"
+addopts = "-q --basetemp=.pytest-tmp -p no:cacheprovider"
 markers = [
   "e2e: end-to-end browser smoke tests",
 ]
