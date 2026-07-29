@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import logging
 import os
@@ -7,19 +7,17 @@ import time
 import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
-from soma_app.automation.adapters import EntradasSaidasAdapter, TransferenciasAdapter
-from soma_app.automation.api.iv_api import EntradasSaidasApi, TransferenciasApi
 from soma_app.automation.pages.entradas_saidas_page import EntradasSaidasPage
 from soma_app.automation.pages.login_page import LoginPage
 from soma_app.automation.pages.transferencias_page import TransferenciasPage
 from soma_app.domain.models import ContaOrdemRow, TipoMovimento
 from soma_app.infra import report as legacy_report
+from soma_app.infra.audit import audit_event, audit_row
 from soma_app.infra.env import env_bool, env_str
 from soma_app.infra.log_config import configure_logging, ensure_artifacts_dirs
 from soma_app.infra.sheets_client import SheetsClient
-from soma_app.infra.soma_api_client import SomaApiClient
 from soma_app.infra.trace import new_run_id, step
 from soma_app.infra.webdriver_factory import (
     WebDriverFactory,
@@ -65,7 +63,7 @@ def _norm_status(value: Any) -> str:
 
 
 def _should_recover_doc(raw_row: Dict[str, Any]) -> bool:
-    # STATUS=PENDENTE_DOC é o único sinal confiável: DOC. SOMA pode ter sido
+    # STATUS=PENDENTE_DOC Ã© o Ãºnico sinal confiÃ¡vel: DOC. SOMA pode ter sido
     # sobrescrito para "Em processamento" (lock) ou "" (unlock_still_processing)
     # entre o run que criou o documento e este reprocessamento.
     status_value = raw_row.get(STATUS_COL_DEFAULT, "")
@@ -82,12 +80,12 @@ def _load_settings() -> Any:
     if env_file:
         env_path = Path(env_file)
         if not env_path.is_absolute():
-            # 1) tenta relativo ao cwd (comportamento padrão)
+            # 1) tenta relativo ao cwd (comportamento padrÃ£o)
             cwd_candidate = Path.cwd() / env_path
             if cwd_candidate.exists():
                 return Settings.from_env(env_file=str(cwd_candidate))
 
-            # 2) tenta relativo à raiz do projeto
+            # 2) tenta relativo Ã  raiz do projeto
             project_candidate = project_root / env_path
             if project_candidate.exists():
                 return Settings.from_env(env_file=str(project_candidate))
@@ -116,7 +114,7 @@ def _run_post_processes(
     run_caixas_bancos: bool,
 ) -> None:
     if bundle is None:
-        logger.warning("Pós-processos ignorados: browser indisponível.")
+        logger.warning("PÃ³s-processos ignorados: browser indisponÃ­vel.")
         return
 
     caixas_ok = True
@@ -131,7 +129,7 @@ def _run_post_processes(
                 logger.exception("Falha no processo Caixas/Bancos.")
 
     if not caixas_ok:
-        logger.warning("Processo de atualização da sheet SOMA não será executado porque Caixas/Bancos falhou.")
+        logger.warning("Processo de atualizaÃ§Ã£o da sheet SOMA nÃ£o serÃ¡ executado porque Caixas/Bancos falhou.")
         return
 
     with step(logger, "run.post.atualizar_sheet_soma"):
@@ -139,58 +137,17 @@ def _run_post_processes(
             sheets_soma = SheetsClient(settings)
             atualizar_sheet_soma(sheets_soma, bundle.a, settings)
         except Exception:
-            logger.exception("Falha no processo de atualização da sheet SOMA.")
-
-
-def _bootstrap_api_session(
-    api_client: SomaApiClient,
-    *,
-    session_token: str,
-    has_api_credentials: bool,
-    auth_preference: str,
-    close_on_exit: bool,
-) -> None:
-    preference = (auth_preference or "").strip().lower()
-    if preference not in {"login_first", "token_first"}:
-        preference = "token_first"
-
-    token = (session_token or "").strip()
-    prefer_login = preference == "login_first"
-
-    if token and not prefer_login:
-        api_client.use_session_token(token, close_on_exit=close_on_exit)
-        return
-
-    if has_api_credentials:
-        try:
-            api_client.open_session()
-            return
-        except Exception:
-            if token:
-                logger.warning(
-                    "Falha ao abrir nova sessao na API com SOMA_API_LOGIN. "
-                    "Usando SOMA_SESSION_TOKEN como fallback."
-                )
-                api_client.use_session_token(token, close_on_exit=close_on_exit)
-                return
-            raise
-
-    if token:
-        api_client.use_session_token(token, close_on_exit=close_on_exit)
-        return
-
-    api_client.open_session()
+            logger.exception("Falha no processo de atualizaÃ§Ã£o da sheet SOMA.")
 
 
 @dataclass
 class RunState:
     """
-    Acumula bundle/api_client à medida que são criados em _bootstrap_backend,
-    para que o cleanup em main() consiga liberá-los mesmo se o bootstrap falhar a meio.
+    Acumula o bundle criado em _bootstrap_backend para que o cleanup em main()
+    consiga liberÃ¡-lo mesmo se o bootstrap falhar a meio.
     """
 
     bundle: Any | None = None
-    api_client: Optional[SomaApiClient] = None
 
 
 @dataclass
@@ -220,10 +177,7 @@ def _bootstrap_backend(
     run_id: str,
     ws: str,
     headless: bool,
-    backend_mode: str,
-    api_first: bool,
     run_caixas_bancos: bool,
-    api_fallback_selenium: bool,
 ) -> None:
     with step(
         logger,
@@ -231,68 +185,38 @@ def _bootstrap_backend(
         run_id=run_id,
         sheet=ws,
         headless=headless,
-        backend=backend_mode,
         caixas_bancos=run_caixas_bancos,
-        api_fallback=api_fallback_selenium,
     ):
-        needs_browser = (not api_first) or run_caixas_bancos or (api_first and api_fallback_selenium)
-        if needs_browser:
-            logger.warning("Validando a versão do ChromeDriver (inicialização do browser)...")
-            t0_drv = time.perf_counter()
+        logger.warning("Validando a versÃ£o do ChromeDriver (inicializaÃ§Ã£o do browser)...")
+        t0_drv = time.perf_counter()
 
-            state.bundle = WebDriverFactory.create(settings)
+        state.bundle = WebDriverFactory.create(settings)
 
-            dt_drv_ms = int((time.perf_counter() - t0_drv) * 1000)
-            driver_obj = getattr(state.bundle, "a", None)
-            wd = unwrap_webdriver(driver_obj)
+        dt_drv_ms = int((time.perf_counter() - t0_drv) * 1000)
+        driver_obj = getattr(state.bundle, "a", None)
+        wd = unwrap_webdriver(driver_obj)
 
-            # =================================================================================
-            # === A CURA PARA A CEGUEIRA NO SERVIDOR LINUX (FORÇAR RESOLUÇÃO FULL HD) ===
-            # =================================================================================
-            if wd:
-                try:
-                    wd.set_window_size(1920, 1080)
-                except Exception as e:
-                    logger.debug("Falha ao forçar window_size: %s", e)
-            # =================================================================================
+        # =================================================================================
+        # === A CURA PARA A CEGUEIRA NO SERVIDOR LINUX (FORÃ‡AR RESOLUÃ‡ÃƒO FULL HD) ===
+        # =================================================================================
+        if wd:
+            try:
+                wd.set_window_size(1920, 1080)
+            except Exception as e:
+                logger.debug("Falha ao forÃ§ar window_size: %s", e)
+        # =================================================================================
 
-            info = get_chromedriver_info(wd)
-            chrome_ver = get_chrome_version(wd)
+        info = get_chromedriver_info(wd)
+        chrome_ver = get_chrome_version(wd)
 
-            logger.warning(
-                "ChromeDriver validado | chromedriver=%s | chrome=%s | path=%s | source=%s | dt_ms=%s",
-                (info.get("version") or "desconhecida"),
-                (chrome_ver or "desconhecida"),
-                (info.get("path") or "n/a"),
-                (info.get("source") or "unknown"),
-                dt_drv_ms,
-            )
-
-        if api_first:
-            base_url = env_str("SOMA_API_BASE_URL", "https://api-production-082f6.up.railway.app").rstrip("/")
-            api_login = env_str("SOMA_API_LOGIN", "")
-            api_password = env_str("SOMA_API_PASSWORD", "")
-            session_token = env_str("SOMA_SESSION_TOKEN", "")
-            has_api_credentials = bool(api_login and api_password)
-            api_auth_preference = env_str("SOMA_API_AUTH_PREFERENCE", "token_first")
-            session_token_close = env_bool("SOMA_SESSION_TOKEN_CLOSE", False)
-
-            state.api_client = SomaApiClient(
-                base_url=base_url,
-                login=api_login,
-                password=api_password,
-                timeout_seconds=int(env_str("SOMA_API_TIMEOUT", "40") or 40),
-                max_retries=int(env_str("SOMA_API_RETRIES", "2") or 2),
-                backoff_seconds=float(env_str("SOMA_API_BACKOFF", "0.9") or 0.9),
-            )
-
-            _bootstrap_api_session(
-                state.api_client,
-                session_token=session_token,
-                has_api_credentials=has_api_credentials,
-                auth_preference=api_auth_preference,
-                close_on_exit=session_token_close,
-            )
+        logger.warning(
+            "ChromeDriver validado | chromedriver=%s | chrome=%s | path=%s | source=%s | dt_ms=%s",
+            (info.get("version") or "desconhecida"),
+            (chrome_ver or "desconhecida"),
+            (info.get("path") or "n/a"),
+            (info.get("source") or "unknown"),
+            dt_drv_ms,
+        )
 
     if state.bundle is not None:
         with step(logger, "run.login_ui", run_id=run_id):
@@ -307,28 +231,9 @@ def _build_processors(
     *,
     settings: Any,
     bundle: Any | None,
-    api_client: Optional[SomaApiClient],
-    api_first: bool,
-    api_fallback_selenium: bool,
 ) -> tuple[Any, Any]:
-    if api_first:
-        if api_client is None:
-            raise RuntimeError("API client não inicializado (modo SOMA_BACKEND=api).")
-
-        entradas_api = EntradasSaidasApi(api_client)
-        transfer_api = TransferenciasApi(api_client)
-
-        if api_fallback_selenium and bundle is not None:
-            entradas_ui = EntradasSaidasPage(bundle.a, settings)
-            transfer_ui = TransferenciasPage(bundle.a, settings)
-            return (
-                EntradasSaidasAdapter(entradas_api, entradas_ui),
-                TransferenciasAdapter(transfer_api, transfer_ui),
-            )
-        return EntradasSaidasAdapter(entradas_api, None), TransferenciasAdapter(transfer_api, None)
-
     if bundle is None:
-        raise RuntimeError("Browser não inicializado em modo Selenium.")
+        raise RuntimeError("Browser nÃ£o inicializado em modo Selenium.")
     return EntradasSaidasPage(bundle.a, settings), TransferenciasPage(bundle.a, settings)
 
 
@@ -353,49 +258,81 @@ def _process_row(
     row_t0 = time.perf_counter()
 
     try:
-        with step(
-            logger,
-            "run.process_row",
+        with audit_row(
             run_id=run_id,
             batch=batch,
             row=row_idx,
             tipo=tipo_txt,
-            progress_current=progress_current,
-            progress_total=progress_total,
+            payload={"progress_current": progress_current, "progress_total": progress_total},
         ):
-            row_model = ContaOrdemRow.from_table_row(row_number=row_idx, raw=raw_row)
+            with step(
+                logger,
+                "run.process_row",
+                run_id=run_id,
+                batch=batch,
+                row=row_idx,
+                tipo=tipo_txt,
+                progress_current=progress_current,
+                progress_total=progress_total,
+            ):
+                row_model = ContaOrdemRow.from_table_row(row_number=row_idx, raw=raw_row)
 
-            if row_model.tipo == TipoMovimento.TRANSFERENCIA:
-                doc_id = transferencias.run(row_model)
-                elapsed_ms = int((time.perf_counter() - row_t0) * 1000)
-                mark_row_ok(table, row_idx, str(doc_id), iduser, elapsed_ms=elapsed_ms)
-                return RowOutcome(ok=True, elapsed_ms=elapsed_ms, transfer=True)
+                if row_model.tipo == TipoMovimento.TRANSFERENCIA:
+                    doc_id = transferencias.run(row_model)
+                    elapsed_ms = int((time.perf_counter() - row_t0) * 1000)
+                    audit_event(
+                        "ROW_OK",
+                        run_id=run_id,
+                        batch=batch,
+                        row=row_idx,
+                        tipo=tipo_txt,
+                        doc_id=doc_id,
+                        result="transfer",
+                    )
+                    mark_row_ok(table, row_idx, str(doc_id), iduser, elapsed_ms=elapsed_ms)
+                    return RowOutcome(ok=True, elapsed_ms=elapsed_ms, transfer=True)
 
-            if is_recover:
-                doc_id = entradas_saidas.recover_doc_id(row_model)
-            else:
-                doc_id = entradas_saidas.create_and_get_doc_id(row_model)
+                if is_recover:
+                    try:
+                        doc_id = entradas_saidas.recover_doc_id(row_model)
+                    except Exception as recover_exc:
+                        logger.warning(
+                            "Recovery de DOC falhou; vou recriar o lancamento para manter o fluxo continuo. err=%s",
+                            _safe_err(recover_exc),
+                        )
+                        doc_id = entradas_saidas.create_and_get_doc_id(row_model)
+                else:
+                    doc_id = entradas_saidas.create_and_get_doc_id(row_model)
 
-            dados_doc = None
-            try:
-                dados_doc = entradas_saidas.fetch_dados_doc(str(doc_id))
-            except Exception:
                 dados_doc = None
+                try:
+                    dados_doc = entradas_saidas.fetch_dados_doc(str(doc_id))
+                except Exception:
+                    dados_doc = None
 
-            elapsed_ms = int((time.perf_counter() - row_t0) * 1000)
-            mark_row_ok(
-                table,
-                row_idx,
-                str(doc_id),
-                iduser,
-                dados_doc=dados_doc,
-                elapsed_ms=elapsed_ms,
-            )
-            return RowOutcome(ok=True, elapsed_ms=elapsed_ms, created=not is_recover, recovered=is_recover)
+                elapsed_ms = int((time.perf_counter() - row_t0) * 1000)
+                audit_event(
+                    "ROW_OK",
+                    run_id=run_id,
+                    batch=batch,
+                    row=row_idx,
+                    tipo=tipo_txt,
+                    doc_id=doc_id,
+                    recovered=is_recover,
+                    created=not is_recover,
+                    dados_doc=bool(dados_doc),
+                )
+                mark_row_ok(
+                    table,
+                    row_idx,
+                    str(doc_id),
+                    iduser,
+                    dados_doc=dados_doc,
+                    elapsed_ms=elapsed_ms,
+                )
+                return RowOutcome(ok=True, elapsed_ms=elapsed_ms, created=not is_recover, recovered=is_recover)
 
     except Exception as e:
-        # Fora do `with step(...)`: deixa o step ver a exceção e emitir
-        # [STEP_FAIL] com o traceback real, em vez de sempre [STEP_OK].
         elapsed_ms = int((time.perf_counter() - row_t0) * 1000)
         err_msg = _safe_err(e)
 
@@ -419,8 +356,6 @@ def _process_row(
             )
 
         return RowOutcome(ok=False, elapsed_ms=elapsed_ms)
-
-
 def _run_batches(
     *,
     settings: Any,
@@ -449,8 +384,8 @@ def _run_batches(
 
         if not processable_rows:
             logger.warning(
-                "Sem novas linhas para processar nesta execução. "
-                "As restantes já foram tentadas no mesmo run_id."
+                "Sem novas linhas para processar nesta execuÃ§Ã£o. "
+                "As restantes jÃ¡ foram tentadas no mesmo run_id."
             )
             break
 
@@ -460,35 +395,36 @@ def _run_batches(
 
         try:
             total_processable = len(processable_rows)
-            for progress_current, r in enumerate(processable_rows, start=1):
-                row_idx = int(r["row"])
-                attempted_rows.add(row_idx)
+            with step(logger, "run.batch", run_id=run_id, batch=batch, rows=total_processable):
+                for progress_current, r in enumerate(processable_rows, start=1):
+                    row_idx = int(r["row"])
+                    attempted_rows.add(row_idx)
 
-                outcome = _process_row(
-                    table,
-                    r,
-                    run_id=run_id,
-                    batch=batch,
-                    progress_current=progress_current,
-                    progress_total=total_processable,
-                    iduser=iduser,
-                    allow_retry=allow_retry,
-                    entradas_saidas=entradas_saidas,
-                    transferencias=transferencias,
-                )
+                    outcome = _process_row(
+                        table,
+                        r,
+                        run_id=run_id,
+                        batch=batch,
+                        progress_current=progress_current,
+                        progress_total=total_processable,
+                        iduser=iduser,
+                        allow_retry=allow_retry,
+                        entradas_saidas=entradas_saidas,
+                        transferencias=transferencias,
+                    )
 
-                totals.row_times_ms.append(outcome.elapsed_ms)
-                totals.processed += 1
-                if outcome.ok:
-                    totals.ok += 1
-                    if outcome.transfer:
-                        totals.transfer += 1
-                    elif outcome.recovered:
-                        totals.recovered += 1
+                    totals.row_times_ms.append(outcome.elapsed_ms)
+                    totals.processed += 1
+                    if outcome.ok:
+                        totals.ok += 1
+                        if outcome.transfer:
+                            totals.transfer += 1
+                        elif outcome.recovered:
+                            totals.recovered += 1
+                        else:
+                            totals.created += 1
                     else:
-                        totals.created += 1
-                else:
-                    totals.err += 1
+                        totals.err += 1
 
         finally:
             if allow_retry:
@@ -518,7 +454,6 @@ def _build_summary(
     *,
     run_id: str,
     ws: str,
-    backend_mode: str,
     totals: RunTotals,
     total_elapsed_ms: int,
 ) -> str:
@@ -528,7 +463,7 @@ def _build_summary(
         "RESUMO FINAL\n"
         f"run_id: {run_id}\n"
         f"sheet: {ws}\n"
-        f"backend: {backend_mode}\n"
+        "backend: selenium\n"
         f"processadas: {totals.processed}\n"
         f"ok: {totals.ok}\n"
         f"erro: {totals.err}\n"
@@ -551,16 +486,13 @@ def main() -> int:
     ws = _sheet_name(settings)
     run_id = new_run_id()
     os.environ["RUN_ID"] = run_id
+    audit_event("RUN_START", run_id=run_id, sheet=ws)
 
     headless = env_bool("HEADLESS", True)
     allow_retry = env_bool("ALLOW_RETRY_ERROR", False)
     iduser = (env_str("IDUSER", "USERJOB") or "USERJOB").strip() or "USERJOB"
 
-    backend_mode = env_str("SOMA_BACKEND", "selenium").lower()
-    api_first = backend_mode == "api"
-
     run_caixas_bancos = env_bool("RUN_CAIXAS_BANCOS", default=True)
-    api_fallback_selenium = env_bool("API_FALLBACK_SELENIUM", default=True)
 
     state = RunState()
     totals = RunTotals()
@@ -572,7 +504,7 @@ def main() -> int:
     legacy_report.preprocess_summary(result.eligible_total, len(result.workset))
 
     if not result.workset:
-        logger.warning("Nenhum documento pendente. Execução encerrada sem login/acesso web.")
+        logger.warning("Nenhum documento pendente. ExecuÃ§Ã£o encerrada sem login/acesso web.")
     else:
         try:
             _bootstrap_backend(
@@ -581,18 +513,12 @@ def main() -> int:
                 run_id=run_id,
                 ws=ws,
                 headless=headless,
-                backend_mode=backend_mode,
-                api_first=api_first,
                 run_caixas_bancos=run_caixas_bancos,
-                api_fallback_selenium=api_fallback_selenium,
             )
 
             entradas_saidas, transferencias = _build_processors(
                 settings=settings,
                 bundle=state.bundle,
-                api_client=state.api_client,
-                api_first=api_first,
-                api_fallback_selenium=api_fallback_selenium,
             )
 
             totals = _run_batches(
@@ -612,21 +538,28 @@ def main() -> int:
 
         finally:
             try:
-                if state.api_client is not None:
-                    state.api_client.close_session()
-            except Exception:
-                pass
-            try:
                 if state.bundle is not None:
                     state.bundle.quit()
             except Exception:
                 pass
 
     total_elapsed_ms = int((time.perf_counter() - overall_t0) * 1000)
+    audit_event(
+        "RUN_END",
+        run_id=run_id,
+        sheet=ws,
+        backend="selenium",
+        processed=totals.processed,
+        ok=totals.ok,
+        err=totals.err,
+        created=totals.created,
+        recovered=totals.recovered,
+        transfer=totals.transfer,
+        total_ms=total_elapsed_ms,
+    )
     resumo_txt = _build_summary(
         run_id=run_id,
         ws=ws,
-        backend_mode=backend_mode,
         totals=totals,
         total_elapsed_ms=total_elapsed_ms,
     )
@@ -638,3 +571,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+

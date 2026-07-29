@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 # Estilo do report:
@@ -141,6 +142,8 @@ def on_step_start(step_name: str, fields: Dict[str, Any]) -> None:
     if progress_total is not None:
         _state["current_total"] = progress_total
 
+    _report(f"[STEP_START] {step_name} | start_at={datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | {_kv(**fields)}")
+
     # Secções principais (1)(2)(3)(4)(6)
     if step_name == "run.init":
         section("1", "Iniciando o processo")
@@ -196,6 +199,8 @@ def on_step_ok(step_name: str, fields: Dict[str, Any], dt_ms: int) -> None:
     if not _ENABLED:
         return
 
+    _report(f"[STEP_OK] {step_name} | end_at={datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | dt_ms={dt_ms} | {_kv(**fields)}")
+
     # Login / SOMA
     if step_name == "login.fill_credentials":
         info("Preenchimento do utilizador realizado com sucesso")
@@ -221,6 +226,8 @@ def on_step_fail(step_name: str, fields: Dict[str, Any], dt_ms: int, exc_name: s
     """
     if not _ENABLED:
         return
+
+    _report(f"[STEP_FAIL] {step_name} | end_at={datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | dt_ms={dt_ms} | err={exc_name} | {_kv(**fields)}")
 
     if step_name == "entradas_saidas.back_to_list":
         error("Falha ao voltar para a lista (timeout ao localizar o botão/elemento de retorno).")

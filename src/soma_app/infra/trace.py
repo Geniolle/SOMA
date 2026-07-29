@@ -5,6 +5,7 @@ import logging
 import time
 import uuid
 from contextlib import contextmanager
+from datetime import datetime
 from typing import Any, Dict, Iterator, Optional, Union
 
 
@@ -34,6 +35,22 @@ def _resolve_level(level: Union[int, str]) -> int:
     if isinstance(level, str):
         return getattr(logging, level.upper(), logging.INFO)
     return int(level)
+
+
+def _now_ts() -> str:
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _emit_audit(event: str, **fields: Any) -> None:
+    """
+    Emite um evento técnico no logger de auditoria, sem quebrar o fluxo principal.
+    """
+    try:
+        from soma_app.infra.audit import audit_event
+
+        audit_event(event, **fields)
+    except Exception:
+        pass
 
 
 def log_kv(
@@ -100,21 +117,25 @@ def step(logger: Optional[logging.Logger], name: str, **fields: Any) -> Iterator
     except Exception:
         _report = None
 
+    start_ts = _now_ts()
     ftxt = fmt_kv(fields)
     if ftxt:
-        logger.info("[STEP] %s | %s", name, ftxt)
+        logger.info("[STEP] %s | start_at=%s | %s", name, start_ts, ftxt)
     else:
-        logger.info("[STEP] %s", name)
+        logger.info("[STEP] %s | start_at=%s", name, start_ts)
+    _emit_audit("STEP_START", step=name, start_at=start_ts, **fields)
 
     t0 = time.perf_counter()
     try:
         yield
     except Exception as e:
         dt_ms = int((time.perf_counter() - t0) * 1000)
+        end_ts = _now_ts()
         if ftxt:
-            logger.error("[STEP_FAIL] %s | dt_ms=%s | %s", name, dt_ms, ftxt, exc_info=True)
+            logger.error("[STEP_FAIL] %s | end_at=%s | dt_ms=%s | %s", name, end_ts, dt_ms, ftxt, exc_info=True)
         else:
-            logger.error("[STEP_FAIL] %s | dt_ms=%s", name, dt_ms, exc_info=True)
+            logger.error("[STEP_FAIL] %s | end_at=%s | dt_ms=%s", name, end_ts, dt_ms, exc_info=True)
+        _emit_audit("STEP_FAIL", step=name, end_at=end_ts, dt_ms=dt_ms, err=type(e).__name__, **fields)
 
         try:
             if _report is not None:
@@ -124,10 +145,12 @@ def step(logger: Optional[logging.Logger], name: str, **fields: Any) -> Iterator
         raise
     else:
         dt_ms = int((time.perf_counter() - t0) * 1000)
+        end_ts = _now_ts()
         if ftxt:
-            logger.info("[STEP_OK] %s | dt_ms=%s | %s", name, dt_ms, ftxt)
+            logger.info("[STEP_OK] %s | end_at=%s | dt_ms=%s | %s", name, end_ts, dt_ms, ftxt)
         else:
-            logger.info("[STEP_OK] %s | dt_ms=%s", name, dt_ms)
+            logger.info("[STEP_OK] %s | end_at=%s | dt_ms=%s", name, end_ts, dt_ms)
+        _emit_audit("STEP_OK", step=name, end_at=end_ts, dt_ms=dt_ms, **fields)
 
         try:
             if _report is not None:

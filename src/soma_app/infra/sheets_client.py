@@ -7,6 +7,8 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from soma_app.infra.audit import audit_event
+
 logger = logging.getLogger(__name__)
 
 
@@ -184,6 +186,13 @@ class SheetsClient:
         except Exception:
             title = spreadsheet_name or spreadsheet_id or "-"
         logger.info("SheetsClient OK | spreadsheet=%s", title)
+        audit_event(
+            "SHEETS_OPEN",
+            spreadsheet=title,
+            spreadsheet_id=spreadsheet_id or "-",
+            spreadsheet_name=spreadsheet_name or "-",
+            has_url=bool(spreadsheet_url),
+        )
 
     def _ws(self, ws: str):
         return self._sh.worksheet(ws)
@@ -228,6 +237,7 @@ class SheetsClient:
                 w.update(rng, item["values"], value_input_option="USER_ENTERED")
 
         logger.info("Batch update OK | ws=%s | ranges=%s", ws, len(ranges))
+        audit_event("SHEETS_BATCH_UPDATE", ws=ws, ranges=len(ranges))
 
     def batch_update_rows(self, ws: str, updates: List[Dict[str, Any]]) -> None:
         if not updates:

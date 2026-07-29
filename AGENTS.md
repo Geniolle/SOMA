@@ -19,14 +19,13 @@ Regra de dependência: `domain` não importa de `infra`/`automation`/`workflows`
 ## Convenções de variáveis de ambiente
 
 - Ler env vars sempre via `soma_app.infra.env` (`env_bool`, `env_str`, `env_int`) — não duplicar parsing de `os.getenv` em módulos novos.
-- `Settings` (`src/soma_app/config/settings.py`) é a fonte de verdade para configuração "estrutural" (credenciais, planilha, timeouts). Toggles de execução pontual (`HEADLESS`, `SOMA_BACKEND`, `ALLOW_RETRY_ERROR`, etc.) são lidos diretamente via `infra.env` dentro de `run_soma.py`.
+- `Settings` (`src/soma_app/config/settings.py`) é a fonte de verdade para configuração "estrutural" (credenciais, planilha, timeouts). Toggles de execução pontual (`HEADLESS`, `ALLOW_RETRY_ERROR`, etc.) são lidos diretamente via `infra.env` dentro de `run_soma.py`.
 - `.env` é carregado de `deploy/.env` por padrão, ou do caminho em `ENV_FILE`.
 
 ## Fluxo principal (`workflows/run_soma.py`)
 
 1. `_load_settings()` + `configure_logging()` + `preprocess_contaordem()` (lock de linhas na sheet).
-2. Se `SOMA_BACKEND=api`: usa `EntradasSaidasApi`/`TransferenciasApi`, com fallback opcional para Selenium via `_EntradasSaidasAdapter`/`_TransferenciasAdapter` (`API_FALLBACK_SELENIUM=true`).
-3. Se `SOMA_BACKEND=selenium` (default): usa `automation/pages/*_page.py` diretamente.
+2. O fluxo principal usa Selenium diretamente via `automation/pages/*_page.py`.
 4. Loop de batches: processa `result.workset`, grava OK/erro via `_mark_row_ok`/`_mark_row_error`, e roda pós-processos (`process_caixas_bancos`, `process_soma`) quando a fila esvazia.
 
 ## Testes e qualidade

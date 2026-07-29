@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from soma_app.domain.rules import is_error_doc
+from soma_app.infra.audit import audit_event
 from soma_app.infra.env import env_int
 
 logger = logging.getLogger(__name__)
@@ -318,6 +319,22 @@ def preprocess_contaordem(
     logger.info(
         "PREPROCESS | total=%s | parsed=%s | parse_errors=%s | inflight=%s | batch_size=%s | capacity_new=%s | eligible_total=%s | workset=%s | newly_locked=%s | invalid=%s",
         total, parsed, parse_errors, inflight, bsz, capacity_new, eligible_total, len(workset), newly_locked, invalid,
+    )
+    audit_event(
+        "PREPROCESS",
+        ws=ws,
+        run_id=run_id,
+        batch=batch,
+        total=total,
+        parsed=parsed,
+        parse_errors=parse_errors,
+        inflight=inflight,
+        batch_size=bsz,
+        capacity_new=capacity_new,
+        eligible_total=eligible_total,
+        workset=len(workset),
+        newly_locked=newly_locked,
+        invalid=invalid,
     )
 
     return PreprocessResult(

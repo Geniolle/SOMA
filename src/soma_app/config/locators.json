@@ -88,19 +88,43 @@
     "OK_ALERT": "/html/body/div[5]/div/button[1]",
     "SWAL_CONTAINER": { "by": "class_name", "value": "swal2-container" },
     "BTN_REALIZAR_PAGAMENTO": "/html/body/ul/li/div/div[2]/button[1]",
+    "BTN_REALIZAR_PAGAMENTO_CANDIDATES": [
+      "//*[self::a or self::button][contains(normalize-space(.), 'Realizar pagamento')]",
+      "//*[self::a or self::button][contains(normalize-space(.), 'Realizar') and contains(normalize-space(.), 'pagamento')]",
+      "//*[self::a or self::button][contains(normalize-space(.), 'Pagar')]",
+      "//*[self::a or self::button][contains(normalize-space(.), 'Pagamento')]"
+    ],
     "BTN_INSERIR_PAGAMENTO_SAIDA": "/html/body/div[2]/div/div[2]/div/div/form/div[29]/div/div[2]/a",
+    "BTN_INSERIR_PAGAMENTO_SAIDA_CANDIDATES": [
+      "//*[self::a or self::button][contains(normalize-space(.), 'Inserir pagamento')]",
+      "//*[self::a or self::button][contains(normalize-space(.), 'Inserir') and contains(normalize-space(.), 'pagamento')]",
+      "//*[self::a or self::button][contains(normalize-space(.), 'Pagamento')]"
+    ],
     "DATA_PAGAMENTO_MODAL": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[1]/div[1]/div/input",
     "FORMA_PAGAMENTO_MODAL": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]/div[1]/div/select",
     "CAIXA_PAGAMENTO_MODAL": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[4]/div[2]/div/select",
     "NUM_DOCUMENTO_MODAL": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]/div[3]/div/input",
     "BTN_SALVAR_PAGAMENTO_MODAL": "/html/body/div[2]/div/div[5]/div/div/form/div[3]/button",
+    "BTN_SALVAR_PAGAMENTO_MODAL_CANDIDATES": [
+      "//*[self::button or self::a][contains(normalize-space(.), 'Salvar Pagamento')]",
+      "//*[self::button or self::a][contains(normalize-space(.), 'Salvar')]"
+    ],
     "BTN_INSERIR_BAIXA": "/html/body/div[2]/div/div[3]/div/div/table/tbody/tr[1]/td[6]/button",
+    "BTN_INSERIR_BAIXA_CANDIDATES": [
+      "//*[self::a or self::button][contains(normalize-space(.), 'Inserir baixa')]",
+      "//*[self::a or self::button][contains(normalize-space(.), 'Inserir') and contains(normalize-space(.), 'baixa')]",
+      "//*[self::a or self::button][contains(normalize-space(.), 'Baixa')]"
+    ],
     "DATA_BAIXA": "/html/body/div[2]/div/div[4]/div/div/form/div[2]/div/div/div[1]/div/div/input",
     "POPUP_CLICK_CANDIDATES": [
       "/html/body/div[2]/div/div[4]/div/div/form/div[2]/div/div/div[2]",
       "/html/body/div[2]/div/div[4]/div/div/form/div[3]"
     ],
     "BTN_SALVAR_BAIXA": "/html/body/div[2]/div/div[4]/div/div/form/div[3]/button",
+    "BTN_SALVAR_BAIXA_CANDIDATES": [
+      "//*[self::button or self::a][contains(normalize-space(.), 'Salvar Baixa')]",
+      "//*[self::button or self::a][contains(normalize-space(.), 'Salvar')]"
+    ],
     "PESQ_DESCRICAO": "/html/body/div[2]/div/div[3]/div/div/form/div[3]/div/input",
     "RADIO_PERIODO": "/html/body/div[2]/div/div[3]/div/div/form/div[7]/div/div/input",
     "RADIO_DATA_PAGAMENTO": "/html/body/div[2]/div/div[3]/div/div/form/div[8]/div/div[2]/input",
@@ -113,7 +137,14 @@
       "//*[contains(.,'Nenhum registo') or contains(.,'Nenhum registro') or contains(.,'Sem resultados')]",
       "//*[contains(.,'No matching records') or contains(.,'No data available') or contains(.,'Nothing found')]"
     ],
-    "DADOS_DOC_CELL": "/html/body/div[2]/div/div[3]/div/div/table/tbody/tr[1]/td[4]"
+    "DADOS_DOC_CELL": "/html/body/div[2]/div/div[4]/div/div/div/div/table/tbody/tr[1]/td[3]",
+    "DADOS_DOC_CANDIDATES": [
+      "/html/body/div[2]/div/div[4]/div/div/div/div/table/tbody/tr[1]/td[3]",
+      "/html/body/div[2]/div/div[3]/div/div/table/tbody/tr[1]/td[3]",
+      "//table//tbody//tr[1]//td[3]",
+      "//table//tbody//tr[1]//td[4]",
+      "//*[self::td or self::div or self::span][contains(normalize-space(.), 'Documento')]"
+    ]
   },
   "transferencias": {
     "MENU_CAIXAS_BANCOS_CANDIDATES": [
