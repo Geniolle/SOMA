@@ -12,6 +12,7 @@ from soma_app.config.locators import (
     apply_locator_overrides,
     load_page_locator_config,
 )
+from soma_app.config.xpaths import CONFIRM_POPUP_CONTAINER_XPATHS, CONFIRM_YES_XPATHS
 
 
 def test_coerce_locator_simple_string():
@@ -149,3 +150,10 @@ def test_load_real_locators_json_configuration():
     }
     assert entradas_cfg["CAIXA_ENTRADA_CONTAINER"] == "//select[@name='id_caixa_origem']/ancestor::div[1]"
     assert entradas_cfg["FORM_READY_SELECT2"] == {"by": "css selector", "value": 'span[id="select2-plano-container"]'}
+
+
+def test_confirm_yes_xpaths_include_payment_popup():
+    assert any("swal2-popup" in xpath for xpath in CONFIRM_POPUP_CONTAINER_XPATHS)
+    assert any("swal2-container" in xpath for xpath in CONFIRM_YES_XPATHS)
+    assert any("realizar o pagamento" in xpath for xpath in CONFIRM_YES_XPATHS)
+    assert "/html/body/ul/li/div/div[2]/button[1]" in CONFIRM_YES_XPATHS

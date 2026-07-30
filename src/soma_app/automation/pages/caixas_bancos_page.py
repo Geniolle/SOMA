@@ -80,7 +80,7 @@ class CaixasBancosPage:
             try:
                 self.a.driver.get(self.site_login_url)
                 self.a.wait_dom_ready(15)
-                time.sleep(1)
+                time.sleep(0.2)
             except Exception:
                 return
 
@@ -88,7 +88,7 @@ class CaixasBancosPage:
                 loc = self.a.wait_any_present(self.SOMA_BUTTON_CANDIDATES, timeout_seconds=max(30, self.timeout))
                 self.a.click_js(loc)
                 self.a.wait_dom_ready(15)
-                time.sleep(2)
+                time.sleep(0.5)
             except Exception:
                 p = self._snap("caixas_reset_fail")
                 log_kv(log, "Falha ao reabrir SOMA.", level=logging.ERROR, url=self.a.driver.current_url, title=self.a.driver.title, screenshot=p)
@@ -101,17 +101,36 @@ class CaixasBancosPage:
             except Exception:
                 self.a.click(loc)
             self.a.wait_dom_ready(15)
-            time.sleep(2)
+            time.sleep(0.5)
 
     def _wait_any_value(self) -> None:
         # espera algum card/valor aparecer (sinal de que a página abriu)
         self.a.wait_any_present(self.ANY_VALUE_CANDIDATES, timeout_seconds=max(30, self.timeout))
 
+    def _menu_present_quickly(self, timeout_seconds: int = 2) -> bool:
+        try:
+            if not self.MENU_CAIXAS_BANCOS_CANDIDATES:
+                return False
+            self.a.wait_any_present(self.MENU_CAIXAS_BANCOS_CANDIDATES, timeout_seconds=timeout_seconds)
+            return True
+        except Exception:
+            return False
+
     def open(self) -> None:
         print("\n(6.1) Abrindo página Caixas/Bancos...")
 
-        # 1) tentativa normal
+        # Se o menu não estiver visível rapidamente, o caminho mais curto é
+        # voltar ao portal e reabrir SOMA antes de insistir no timeout longo.
         try:
+            if self._menu_present_quickly(timeout_seconds=2):
+                self._open_menu()
+                self._wait_any_value()
+                return
+        except Exception:
+            pass
+
+        try:
+            self._reset_to_soma()
             self._open_menu()
             self._wait_any_value()
             return
@@ -119,17 +138,14 @@ class CaixasBancosPage:
             p = self._snap("caixas_open_first_try_fail")
             log_kv(
                 log,
-                "Caixas/Bancos não abriu na 1ª tentativa. Vou tentar reset.",
+                "Caixas/Bancos não abriu após reset. Vou registrar o erro.",
                 level=logging.ERROR,
                 url=self.a.driver.current_url,
                 title=self.a.driver.title,
                 screenshot=p,
             )
 
-        # 2) reset e tentar de novo
-        self._reset_to_soma()
-        self._open_menu()
-        self._wait_any_value()
+        raise RuntimeError("Caixas/Bancos não abriu.")
 
     def _read_value(self, label: CaixaBancoField | str, locator: Locator) -> Optional[str]:
         label_key = self._field(label)

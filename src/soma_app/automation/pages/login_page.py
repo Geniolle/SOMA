@@ -53,7 +53,7 @@ class LoginPage:
                 raise RuntimeError("Login não avançou (form ainda visível).")
 
         with step(log, "login.open_soma_app"):
-            self.open_soma_app()
+            self.open_soma_app(reload_portal=False)
 
         log.info("Login OK e SOMA pronto | url=%s | title=%s", self.a.driver.current_url, self.a.driver.title)
 
@@ -63,13 +63,14 @@ class LoginPage:
                 return
             self.open_soma_app()
 
-    def open_soma_app(self) -> None:
+    def open_soma_app(self, *, reload_portal: bool = True) -> None:
         # garante estar no portal (quando necessário)
-        with step(log, "soma.portal_open", url=self.settings.site_login_url):
-            try:
-                self.a.driver.get(self.settings.site_login_url)
-            except Exception:
-                pass
+        with step(log, "soma.portal_open", url=self.settings.site_login_url, reload_portal=reload_portal):
+            if reload_portal:
+                try:
+                    self.a.driver.get(self.settings.site_login_url)
+                except Exception:
+                    pass
 
         before_handles = list(self.a.driver.window_handles)
 

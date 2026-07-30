@@ -15,7 +15,7 @@ from soma_app.automation.actions import Actions
 from soma_app.config.fields import EntradaSaidaField, field_name
 from soma_app.config.locators import apply_locator_overrides
 from soma_app.config.urls import DEFAULT_SITE_HOME_URL, ENTRADAS_SAIDAS_DADOS_URL_SUFFIX
-from soma_app.config.xpaths import CONFIRM_NO_XPATHS, CONFIRM_YES_XPATHS
+from soma_app.config.xpaths import CONFIRM_NO_XPATHS, CONFIRM_POPUP_CONTAINER_XPATHS, CONFIRM_YES_XPATHS
 from soma_app.domain.models import ContaOrdemRow, TipoMovimento
 from soma_app.infra.env import env_bool, env_int
 from soma_app.infra.trace import log_kv, step
@@ -84,6 +84,7 @@ class EntradasSaidasPage:
     # =========
     OK_ALERT = (By.XPATH, "")
     SWAL_CONTAINER = (By.CLASS_NAME, "swal2-container")
+    CONFIRM_POPUP_CONTAINER_CANDIDATES = [(By.XPATH, xpath) for xpath in CONFIRM_POPUP_CONTAINER_XPATHS]
     CONFIRM_YES_CANDIDATES = [(By.XPATH, xpath) for xpath in CONFIRM_YES_XPATHS]
     CONFIRM_NO_CANDIDATES = [(By.XPATH, xpath) for xpath in CONFIRM_NO_XPATHS]
 
@@ -196,13 +197,11 @@ class EntradasSaidasPage:
         return field_name(field)
 
     def _exists_any(self, locators: Iterable[Tuple[str, str]], timeout_seconds: int = 1) -> bool:
-        for loc in locators:
-            try:
-                if self.a.exists(loc, timeout_seconds=timeout_seconds):
-                    return True
-            except Exception:
-                pass
-        return False
+        try:
+            self.a.wait_any_present(locators, timeout_seconds=timeout_seconds)
+            return True
+        except Exception:
+            return False
 
     def _input_value(self, locator: Tuple[str, str]) -> str:
         try:
@@ -529,46 +528,163 @@ class EntradasSaidasPage:
 
     def _handle_confirmation_popup(self, *, row: ContaOrdemRow, accept: bool = True, timeout_seconds: int = 5) -> bool:
         with step(log, "entradas_saidas.confirm_popup", row=row.row_number, tipo=row.tipo.value, accept=accept):
-            try:
-                candidates = self.CONFIRM_YES_CANDIDATES if accept else self.CONFIRM_NO_CANDIDATES
-                end = time.time() + timeout_seconds
-                while time.time() < end:
-                    for loc in candidates:
+            candidates = self.CONFIRM_YES_CANDIDATES if accept else self.CONFIRM_NO_CANDIDATES
+            end = time.time() + timeout_seconds
+            last_err: Exception | None = None
+            self._emit(
+                "[ENTRADAS_SAIDAS] A aguardar popup de pagamento",
+                row=row.row_number,
+                tipo=row.tipo.value,
+                candidates=[str(loc) for loc in candidates],
+            )
+            while time.time() < end:
+                for loc in candidates:
+                    try:
+                        if not self.a.exists(loc, timeout_seconds=0):
+                            continue
+                        self._emit(
+                            "[ENTRADAS_SAIDAS] Popup encontrado",
+                            row=row.row_number,
+                            tipo=row.tipo.value,
+                            locator=str(loc),
+                        )
+                        el = self.a.wait_visible(loc, timeout_seconds=2)
+                        displayed = False
+                        enabled = False
                         try:
-                            if self.a.exists(loc, timeout_seconds=0):
-                                self.a.click_js(loc)
-                                time.sleep(0.5)
-                                self._dismiss_overlays_with_wait(max_wait_seconds=2)
-                                self._emit(
-                                    "Popup de confirmaÃ§Ã£o tratado com sucesso.",
-                                    row=row.row_number,
-                                    tipo=row.tipo.value,
-                                    choice="Sim" if accept else "NÃ£o",
-                                )
-                                return True
+                            displayed = bool(el.is_displayed())
+                        except Exception as exc:
+                            last_err = exc
+                        try:
+                            enabled = bool(el.is_enabled())
+                        except Exception as exc:
+                            last_err = exc
+                        self._emit(
+                            f"[ENTRADAS_SAIDAS] Botão Sim visível: {str(displayed).lower()}",
+                            row=row.row_number,
+                            tipo=row.tipo.value,
+                            locator=str(loc),
+                        )
+                        self._emit(
+                            f"[ENTRADAS_SAIDAS] Botão Sim habilitado: {str(enabled).lower()}",
+                            row=row.row_number,
+                            tipo=row.tipo.value,
+                            locator=str(loc),
+                        )
+                        if not displayed or not enabled:
+                            last_err = RuntimeError("Botao Sim nao estava visivel e habilitado.")
+                            continue
+
+                        self._emit(
+                            "[ENTRADAS_SAIDAS] Botão Sim encontrado",
+                            row=row.row_number,
+                            tipo=row.tipo.value,
+                            locator=str(loc),
+                            text=self._safe(getattr(el, "text", "")),
+                        )
+                        try:
+                            self.a.driver.execute_script(
+                                "arguments[0].scrollIntoView({block: 'center', inline: 'center'});",
+                                el,
+                            )
                         except Exception:
                             pass
 
-                    try:
-                        alert = self.a.driver.switch_to.alert
-                        if accept:
-                            alert.accept()
-                        else:
-                            alert.dismiss()
-                        time.sleep(0.5)
+                        try:
+                            self.a.wait_clickable(loc, timeout_seconds=2)
+                            self.a.click(loc)
+                            self._emit(
+                                "[ENTRADAS_SAIDAS] Clique normal executado",
+                                row=row.row_number,
+                                tipo=row.tipo.value,
+                                locator=str(loc),
+                            )
+                        except Exception as exc:
+                            last_err = exc
+                            try:
+                                self.a.click_js(loc)
+                                self._emit(
+                                    "[ENTRADAS_SAIDAS] Clique JavaScript executado como fallback",
+                                    row=row.row_number,
+                                    tipo=row.tipo.value,
+                                    locator=str(loc),
+                                )
+                            except Exception as exc_js:
+                                last_err = exc_js
+                                continue
+
+                        popup_container = None
+                        for candidate in self.CONFIRM_POPUP_CONTAINER_CANDIDATES:
+                            try:
+                                if self.a.exists(candidate, timeout_seconds=0):
+                                    popup_container = candidate
+                                    break
+                            except Exception:
+                                pass
+                        if popup_container is None and self.a.exists(self.SWAL_CONTAINER, timeout_seconds=0):
+                            popup_container = self.SWAL_CONTAINER
+
+                        verification_locator = popup_container or loc
+                        try:
+                            self.a.wait_invisible(verification_locator, timeout_seconds=3)
+                        except Exception as exc:
+                            last_err = exc
+                            self._emit(
+                                "[ENTRADAS_SAIDAS] Popup ainda visivel apos o clique.",
+                                level=logging.WARNING,
+                                row=row.row_number,
+                                tipo=row.tipo.value,
+                                locator=str(verification_locator),
+                            )
+                            continue
+
+                        try:
+                            self.a.wait_invisible(loc, timeout_seconds=2)
+                        except Exception:
+                            pass
                         self._emit(
-                            "Popup nativo do browser tratado com sucesso.",
+                            "[ENTRADAS_SAIDAS] Popup fechado",
                             row=row.row_number,
                             tipo=row.tipo.value,
-                            choice="accept" if accept else "dismiss",
+                            locator=str(loc),
+                        )
+                        self._emit(
+                            "[ENTRADAS_SAIDAS] Pagamento confirmado",
+                            row=row.row_number,
+                            tipo=row.tipo.value,
+                            choice="Sim" if accept else "Nao",
                         )
                         return True
-                    except Exception:
-                        pass
+                    except StaleElementReferenceException as exc:
+                        last_err = exc
+                    except Exception as exc:
+                        last_err = exc
 
-                    time.sleep(0.2)
-            except Exception:
-                pass
+                try:
+                    alert = self.a.driver.switch_to.alert
+                    if accept:
+                        alert.accept()
+                    else:
+                        alert.dismiss()
+                    self._emit(
+                        "Popup nativo do browser tratado com sucesso.",
+                        row=row.row_number,
+                        tipo=row.tipo.value,
+                        choice="accept" if accept else "dismiss",
+                    )
+                    return True
+                except Exception as exc:
+                    last_err = exc
+
+                time.sleep(0.2)
+            self._emit(
+                "Popup de confirmação não foi tratado dentro do tempo esperado.",
+                level=logging.WARNING,
+                row=row.row_number,
+                tipo=row.tipo.value,
+                accept=accept,
+                last_err=repr(last_err) if last_err else "",
+            )
         return False
 
     def _click_menu_entradas_saidas(self, timeout_seconds: int = 60) -> None:
@@ -627,7 +743,13 @@ class EntradasSaidasPage:
             )
             self.a.driver.get(url)
             self.a.wait_dom_ready(self.search_direct_dom_timeout)
-            self.a.wait_present(self.PESQ_DESCRICAO, timeout_seconds=self.search_direct_visible_timeout)
+            try:
+                self.a.wait_present(
+                    self.PESQ_DESCRICAO,
+                    timeout_seconds=max(2, self.search_direct_visible_timeout),
+                )
+            except Exception:
+                self._ensure_pesquisa_visivel(row, timeout_seconds=self.search_list_ready_timeout)
 
     # -----------------------
     # navegaÃƒÂ§ÃƒÂ£o principal
@@ -638,7 +760,6 @@ class EntradasSaidasPage:
         for attempt in (1, 2):
             try:
                 self.a.wait_any_present(self.FORM_READY_CANDIDATES, timeout_seconds=timeout_seconds)
-                time.sleep(0.8)
                 self.a.wait_any_present(self.RADIO_ANY_CANDIDATES, timeout_seconds=min(30, timeout_seconds))
                 return
             except Exception as e:
@@ -663,7 +784,6 @@ class EntradasSaidasPage:
                     self._dismiss_overlays()
                     self._close_datepicker()
                     self._click_menu_entradas_saidas(timeout_seconds=60)
-                    time.sleep(0.8)
                     self._click_nova(timeout_seconds=30)
                     self.a.wait_dom_ready(15)
                 except Exception:
@@ -832,14 +952,42 @@ class EntradasSaidasPage:
                 self._dismiss_overlays_with_wait(max_wait_seconds=3)
                 self._close_datepicker()
                 if self.a.exists(self.BTN_SALVAR_FORM, timeout_seconds=2):
+                    self._emit("[ENTRADAS_SAIDAS] Registo guardado", row=row.row_number, tipo=row.tipo.value)
+                    self._emit(
+                        f"[ENTRADAS_SAIDAS] Forma de pagamento recebida: {row.forma_pagamento}",
+                        row=row.row_number,
+                        tipo=row.tipo.value,
+                    )
+                    self._emit(
+                        f"[ENTRADAS_SAIDAS] Forma de pagamento normalizada: {self._norm(row.forma_pagamento)}",
+                        row=row.row_number,
+                        tipo=row.tipo.value,
+                    )
+                    self._emit(
+                        "[ENTRADAS_SAIDAS] Deve realizar pagamento: true",
+                        row=row.row_number,
+                        tipo=row.tipo.value,
+                    )
                     self.a.click_js(self.BTN_SALVAR_FORM)
-                    time.sleep(1)
-                    self._handle_confirmation_popup(row=row, accept=True, timeout_seconds=8)
+                    popup_handled = self._handle_confirmation_popup(row=row, accept=True, timeout_seconds=8)
                     self._dismiss_overlays_with_wait(max_wait_seconds=3)
+                    if not popup_handled and self.a.exists(self.SWAL_CONTAINER, timeout_seconds=1):
+                        p = self.a.screenshot(f"entradas_saidas_save_popup_still_open_row_{row.row_number}")
+                        self._emit(
+                            "Popup de confirmacao permaneceu aberto apos salvar.",
+                            level=logging.ERROR,
+                            row=row.row_number,
+                            tipo=row.tipo.value,
+                            screenshot=p,
+                            url=getattr(self.a.driver, "current_url", ""),
+                            title=getattr(self.a.driver, "title", ""),
+                        )
+                        raise RuntimeError("Popup de confirmacao permaneceu aberto apos salvar.")
+                    self._emit("[ENTRADAS_SAIDAS] Popup fechado", row=row.row_number, tipo=row.tipo.value)
                     self._emit("Campos principais preenchidos com sucesso")
                     self._confirm("entradas_saidas.save_form_best_effort", row=row)
             except Exception:
-                pass
+                raise
 
     # -----------------------
     # pagamento/baixa
@@ -894,7 +1042,12 @@ class EntradasSaidasPage:
 
     def _pagamento_saida_modal(self, row: ContaOrdemRow) -> None:
         with step(log, "entradas_saidas.pagamento_saida_modal", row=row.row_number, tipo=row.tipo.value):
-            modal_open = self.a.exists(self.DATA_PAGAMENTO_MODAL, timeout_seconds=3)
+            modal_open = False
+            try:
+                self.a.wait_visible(self.DATA_PAGAMENTO_MODAL, timeout_seconds=3)
+                modal_open = True
+            except Exception:
+                modal_open = False
             if not modal_open:
                 candidates = self._unique_locators(self.BTN_INSERIR_PAGAMENTO_SAIDA_CANDIDATES or [self.BTN_INSERIR_PAGAMENTO_SAIDA])
                 self._emit(
@@ -915,7 +1068,13 @@ class EntradasSaidasPage:
                         url=getattr(self.a.driver, "current_url", ""),
                         title=getattr(self.a.driver, "title", ""),
                     )
-                    raise RuntimeError("Nao encontrei o popup nem o botao de inserir pagamento.")
+                    self._emit(
+                        "Modal de pagamento nao apareceu; vou seguir com o fluxo sem inserir pagamento.",
+                        level=logging.WARNING,
+                        row=row.row_number,
+                        tipo=row.tipo.value,
+                    )
+                    return
 
                 loc = self.a.wait_any_present(candidates, timeout_seconds=10)
                 self._emit(
@@ -940,7 +1099,13 @@ class EntradasSaidasPage:
                         screenshot=p,
                         err=type(exc).__name__,
                     )
-                    raise RuntimeError("Modal de inserir pagamento nao abriu depois do clique.") from exc
+                    self._emit(
+                        "Modal de inserir pagamento nao abriu depois do clique; vou seguir sem preencher este modal.",
+                        level=logging.WARNING,
+                        row=row.row_number,
+                        tipo=row.tipo.value,
+                    )
+                    return
             self._emit("Modal de inserir pagamento aberto com sucesso.", row=row.row_number, tipo=row.tipo.value)
 
             self.a.type(self.DATA_PAGAMENTO_MODAL, row.data_mov)
@@ -1158,6 +1323,13 @@ class EntradasSaidasPage:
                     self._confirm("entradas_saidas.back_to_list_best_effort", row=row)
                     return
 
+            try:
+                self._open_search_list_direct(row)
+                self._confirm("entradas_saidas.back_to_list_best_effort", row=row)
+                return
+            except Exception:
+                pass
+
             used_fallback = False
 
             clicked_back = False
@@ -1184,12 +1356,22 @@ class EntradasSaidasPage:
 
             with step(log, "entradas_saidas.back_to_list_wait_visible_after_driver_back", row=row.row_number, tipo=row.tipo.value):
                 try:
-                    if clicked_back:
-                        self._open_search_list_direct(row)
-                        self._confirm("entradas_saidas.back_to_list_best_effort", row=row)
-                        return
+                    visible = self.a.exists(self.PESQ_DESCRICAO, timeout_seconds=0)
+                    if not visible and clicked_back:
+                        try:
+                            self._open_search_list_direct(row)
+                            visible = True
+                        except Exception:
+                            visible = self.a.exists(self.PESQ_DESCRICAO, timeout_seconds=0)
 
-                    if not self.a.exists(self.PESQ_DESCRICAO, timeout_seconds=0):
+                    if not visible:
+                        try:
+                            self._ensure_pesquisa_visivel(row, timeout_seconds=self.search_list_ready_timeout)
+                            visible = True
+                        except Exception:
+                            visible = False
+
+                    if not visible:
                         try:
                             self._dump_search_diagnostics(row, suffix="back_failed")
                         except Exception:
@@ -1201,7 +1383,6 @@ class EntradasSaidasPage:
                                 row=row.row_number,
                                 tipo=row.tipo.value,
                             )
-                        self._open_search_list_direct(row)
                 except Exception:
                     with step(log, "entradas_saidas.back_to_list_ensure_menu", row=row.row_number, tipo=row.tipo.value):
                         self._ensure_pesquisa_visivel(row, timeout_seconds=self.search_list_ready_timeout)
@@ -1349,8 +1530,15 @@ class EntradasSaidasPage:
 
             self._save_form_if_present(row)
 
-            self._realizar_pagamento(row)
-            self._pagamento_saida_modal(row)
+            if row.tipo == TipoMovimento.SAIDA:
+                self._realizar_pagamento(row)
+                self._pagamento_saida_modal(row)
+            else:
+                self._emit(
+                    "Fluxo de pagamento adicional ignorado para Entrada.",
+                    row=row.row_number,
+                    tipo=row.tipo.value,
+                )
             if self._is_transferencia_bancaria(row.forma_pagamento):
                 self._do_baixa(row)
 

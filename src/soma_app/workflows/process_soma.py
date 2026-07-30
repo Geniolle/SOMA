@@ -251,9 +251,9 @@ def _pesquisar_lancamentos_periodo(page: EntradasSaidasPage, data_ini: str, data
 
         _set_input_value(page.a, page.PESQ_DESCRICAO, "")
         page.a.click_js(page.RADIO_PERIODO)
-        time.sleep(0.3)
+        time.sleep(0.1)
         page.a.click_js(page.RADIO_DATA_PAGAMENTO)
-        time.sleep(0.3)
+        time.sleep(0.1)
 
         _set_input_value(page.a, page.DATA_INI, data_ini)
         _set_input_value(page.a, page.DATA_FIM, data_fim)

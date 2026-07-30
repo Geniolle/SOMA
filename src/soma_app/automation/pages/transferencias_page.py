@@ -114,7 +114,7 @@ class TransferenciasPage:
             EC.text_to_be_present_in_element_value(self.SELECT2_SEARCH, v)
         )
         inp.send_keys(Keys.ENTER)
-        time.sleep(0.8)
+        time.sleep(0.2)
 
         # verificação “best effort”: o texto do opener deve conter o valor selecionado
         try:
@@ -122,7 +122,7 @@ class TransferenciasPage:
             txt = (el.text or "").strip()
             if v.lower() not in txt.lower():
                 # às vezes demora renderizar, tenta mais um pouco
-                time.sleep(1.2)
+                time.sleep(0.4)
                 el = self.a.driver.find_element(*opener)
                 txt = (el.text or "").strip()
             if v.lower() not in txt.lower():
@@ -140,12 +140,12 @@ class TransferenciasPage:
 
         with step(log, "transfer.open_menu", row=row.row_number):
             self._click_any(self.MENU_CAIXAS_BANCOS_CANDIDATES, timeout_seconds=max(60, self.timeout))
-            time.sleep(5)  # igual ao SOMA.py
+            time.sleep(0.5)
 
         with step(log, "transfer.open_new", row=row.row_number):
             # tenta abrir “Nova Transferência”
             self._click_any(self.BTN_NOVA_TRANSFERENCIA_CANDIDATES, timeout_seconds=max(60, self.timeout))
-            time.sleep(2)
+            time.sleep(0.2)
 
             # espera aparecer o primeiro campo do form
             self.a.wait_present(self.CAIXA_SAIDA, timeout_seconds=max(60, self.timeout))
@@ -160,7 +160,7 @@ class TransferenciasPage:
         with step(log, "transfer.fill", row=row.row_number):
             self._select2_choose_verified(self.CAIXA_SAIDA, row.caixa_saida, row=row, field=self._field(TransferenciaField.CAIXA_SAIDA))
             self.a.type(self.VALOR, str(row.importancia))
-            time.sleep(0.5)
+            time.sleep(0.2)
             self._select2_choose_verified(self.CAIXA_ENTRADA, row.caixa, row=row, field=self._field(TransferenciaField.CAIXA_ENTRADA))
             self.a.type(self.DATA, row.data_mov)
             self.a.type(self.DESCRICAO, row.descricao_soma, clear=False)
@@ -168,14 +168,14 @@ class TransferenciasPage:
         with step(log, "transfer.save", row=row.row_number):
             self._dismiss_alerts()
             self.a.click_js(self.BTN_SALVAR)
-            time.sleep(1)
+            time.sleep(0.2)
             self._dismiss_alerts()
 
         with step(log, "transfer.back", row=row.row_number):
             if self.a.exists(self.BTN_VOLTAR, timeout_seconds=15):
                 self.a.click_js(self.BTN_VOLTAR)
                 self.a.wait_dom_ready(15)
-                time.sleep(1)
+                time.sleep(0.2)
 
         print(f"[TRANSFERÊNCIA] Concluída | linha={row.row_number}")
 
