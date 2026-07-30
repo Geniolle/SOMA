@@ -8,7 +8,9 @@ from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 
 from soma_app.automation.actions import Actions
+from soma_app.config.fields import CaixaBancoField, field_name
 from soma_app.config.locators import apply_locator_overrides
+from soma_app.config.urls import DEFAULT_SITE_LOGIN_URL
 from soma_app.infra.trace import log_kv, step
 
 log = logging.getLogger("soma_app.pages.caixas_bancos")
@@ -45,7 +47,7 @@ class CaixasBancosPage:
         self.a = actions
         self.settings = settings
         self.timeout = int(getattr(settings, "timeout_seconds", 20) or 20)
-        self.site_login_url = (getattr(settings, "site_login_url", "") or "https://verbodavida.info/apps/index.php").strip()
+        self.site_login_url = (getattr(settings, "site_login_url", "") or DEFAULT_SITE_LOGIN_URL).strip()
         apply_locator_overrides(self, "caixas_bancos")
         self.ANY_VALUE_CANDIDATES = [
             self.V_CAIXA_DIARIO,
@@ -54,6 +56,10 @@ class CaixasBancosPage:
             self.V_CAIXA_CAFE,
             self.V_CAIXA_LIVRARIA,
         ]
+
+    @staticmethod
+    def _field(field: CaixaBancoField | str) -> str:
+        return field_name(field)
 
     # -------------------------
     # helpers
@@ -125,7 +131,8 @@ class CaixasBancosPage:
         self._open_menu()
         self._wait_any_value()
 
-    def _read_value(self, label: str, locator: Locator) -> Optional[str]:
+    def _read_value(self, label: CaixaBancoField | str, locator: Locator) -> Optional[str]:
+        label_key = self._field(label)
         try:
             # ajuda quando o card está fora do viewport
             try:
@@ -139,24 +146,24 @@ class CaixasBancosPage:
                 return None
             return txt
         except TimeoutException:
-            p = self._snap(f"caixas_read_timeout_{label.lower().replace(' ', '_')}")
+            p = self._snap(f"caixas_read_timeout_{label_key.lower()}")
             log_kv(
                 log,
                 "Timeout ao ler valor.",
                 level=logging.ERROR,
-                label=label,
+                label=label_key,
                 url=self.a.driver.current_url,
                 title=self.a.driver.title,
                 screenshot=p,
             )
             return None
         except Exception as e:
-            p = self._snap(f"caixas_read_fail_{label.lower().replace(' ', '_')}")
+            p = self._snap(f"caixas_read_fail_{label_key.lower()}")
             log_kv(
                 log,
                 "Erro ao ler valor.",
                 level=logging.ERROR,
-                label=label,
+                label=label_key,
                 err=str(e)[:200],
                 url=self.a.driver.current_url,
                 title=self.a.driver.title,
@@ -168,23 +175,23 @@ class CaixasBancosPage:
         with step(log, "caixas.read_values"):
             vals: Dict[str, str] = {}
 
-            v = self._read_value("CAIXA DIÁRIO", self.V_CAIXA_DIARIO)
+            v = self._read_value(CaixaBancoField.CAIXA_DIARIO, self.V_CAIXA_DIARIO)
             if v is not None:
                 vals["CAIXA DIÁRIO"] = v
 
-            v = self._read_value("CAIXA BANCO", self.V_CAIXA_BANCO)
+            v = self._read_value(CaixaBancoField.CAIXA_BANCO, self.V_CAIXA_BANCO)
             if v is not None:
                 vals["CAIXA BANCO"] = v
 
-            v = self._read_value("D. CRIANÇAS", self.V_CAIXA_CRIANCAS)
+            v = self._read_value(CaixaBancoField.CRIANCAS, self.V_CAIXA_CRIANCAS)
             if v is not None:
                 vals["D. CRIANÇAS"] = v
 
-            v = self._read_value("VERBO CAFE", self.V_CAIXA_CAFE)
+            v = self._read_value(CaixaBancoField.CAFE, self.V_CAIXA_CAFE)
             if v is not None:
                 vals["VERBO CAFE"] = v
 
-            v = self._read_value("VERBO SHOP", self.V_CAIXA_LIVRARIA)
+            v = self._read_value(CaixaBancoField.LIVRARIA, self.V_CAIXA_LIVRARIA)
             if v is not None:
                 vals["VERBO SHOP"] = v
 

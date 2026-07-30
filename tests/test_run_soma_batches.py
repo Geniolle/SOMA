@@ -117,3 +117,39 @@ def test_run_batches_counts_errors_without_stopping(monkeypatch):
     assert totals.processed == 1
     assert totals.err == 1
     assert totals.ok == 0
+
+
+def test_run_batches_can_stop_after_max_rows_per_run(monkeypatch):
+    header = ["TIPO", "DOC. SOMA", "STATUS", "IDUSER", "TIMESTAMP", "DADOS DOC"]
+    records = [
+        {"TIPO": "Entrada", "DOC. SOMA": "", "STATUS": ""},
+        {"TIPO": "Entrada", "DOC. SOMA": "", "STATUS": ""},
+    ]
+    fake_sheets = FakeSheetsClient(header, records)
+    monkeypatch.setattr(run_soma_module, "SheetsClient", lambda settings: fake_sheets)
+
+    result = preprocess_contaordem(fake_sheets, ws="CONTAORDEM", run_id="t1", batch=1)
+    assert len(result.workset) == 2
+
+    entradas_saidas = FakeEntradasSaidas(doc_id="DOC-1")
+    transferencias = FakeTransferencias()
+
+    totals = run_soma_module._run_batches(
+        settings=None,
+        ws="CONTAORDEM",
+        run_id="t1",
+        sheets=fake_sheets,
+        result=result,
+        batch=1,
+        bundle=None,
+        iduser="USERJOB",
+        allow_retry=False,
+        run_caixas_bancos=False,
+        max_rows_per_run=1,
+        entradas_saidas=entradas_saidas,
+        transferencias=transferencias,
+    )
+
+    assert totals.processed == 1
+    assert totals.ok == 1
+    assert len(entradas_saidas.created) == 1

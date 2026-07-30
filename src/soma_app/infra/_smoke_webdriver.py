@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 
+from soma_app.config.urls import SMOKE_TEST_URL
 from soma_app.config.settings import Settings
 from soma_app.infra.log_config import configure_logging, ensure_artifacts_dirs
 from soma_app.infra.webdriver_factory import WebDriverFactory
@@ -15,7 +16,7 @@ def main() -> int:
     bundle = WebDriverFactory.create(settings)
     driver = bundle.driver
     try:
-        driver.get("https://example.com")
+        driver.get(SMOKE_TEST_URL)
         time.sleep(2)
     finally:
         driver.quit()

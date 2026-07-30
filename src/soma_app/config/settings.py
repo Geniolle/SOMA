@@ -7,6 +7,8 @@ from typing import Optional
 
 from dotenv import load_dotenv
 
+from soma_app.config.urls import DEFAULT_SITE_HOME_URL, DEFAULT_SITE_LOGIN_URL
+
 
 def _to_bool(v: str, default: bool = False) -> bool:
     if v is None:
@@ -83,8 +85,8 @@ class Settings:
         site_user = _strip_quotes(os.getenv("SITE_USER", ""))
         site_password = _strip_quotes(os.getenv("SITE_PASSWORD", ""))
 
-        site_login_url = _strip_quotes(os.getenv("SITE_LOGIN_URL", "https://verbodavida.info/apps/index.php"))
-        site_home_url = _strip_quotes(os.getenv("SITE_HOME_URL", "https://verbodavida.info/IVV/"))
+        site_login_url = _strip_quotes(os.getenv("SITE_LOGIN_URL", DEFAULT_SITE_LOGIN_URL))
+        site_home_url = _strip_quotes(os.getenv("SITE_HOME_URL", DEFAULT_SITE_HOME_URL))
 
         headless = _to_bool(os.getenv("HEADLESS", "true"), default=True)
         timeout_seconds = _to_int(os.getenv("TIMEOUT_SECONDS", "20"), default=20)

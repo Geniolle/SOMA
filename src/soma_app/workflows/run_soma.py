@@ -15,7 +15,7 @@ from soma_app.automation.pages.transferencias_page import TransferenciasPage
 from soma_app.domain.models import ContaOrdemRow, TipoMovimento
 from soma_app.infra import report as legacy_report
 from soma_app.infra.audit import audit_event, audit_row
-from soma_app.infra.env import env_bool, env_str
+from soma_app.infra.env import env_bool, env_int, env_str
 from soma_app.infra.log_config import configure_logging, ensure_artifacts_dirs
 from soma_app.infra.sheets_client import SheetsClient
 from soma_app.infra.soma_api_client import SomaApiClient
@@ -513,20 +513,34 @@ def _run_batches(
     iduser: str,
     allow_retry: bool,
     run_caixas_bancos: bool,
+    max_rows_per_run: int | None = None,
     detailed_logging: bool = False,
     entradas_saidas: Any,
     transferencias: Any,
 ) -> RunTotals:
     totals = RunTotals()
     attempted_rows: set[int] = set()
+    row_limit = max_rows_per_run if max_rows_per_run and max_rows_per_run > 0 else None
 
     while True:
+        if row_limit is not None and totals.processed >= row_limit:
+            logger.info(
+                "Limite de linhas por execução atingido; a encerrar run sem avançar para novos lotes.",
+            )
+            break
+
         processable_rows: list[Dict[str, Any]] = []
         for raw_row in result.workset:
             row_number = int(raw_row["row"])
             if row_number in attempted_rows:
                 continue
             processable_rows.append(raw_row)
+
+        if row_limit is not None:
+            remaining = row_limit - totals.processed
+            if remaining <= 0:
+                break
+            processable_rows = processable_rows[:remaining]
 
         if not processable_rows:
             logger.warning(
@@ -590,12 +604,21 @@ def _run_batches(
                 err=totals.err,
             )
 
+            if row_limit is not None and totals.processed >= row_limit:
+                logger.info(
+                    "Limite de linhas por execução atingido depois do lote atual; a parar antes de reprocessar o próximo batch.",
+                )
+                break
+
         finally:
             if allow_retry:
                 table.load()
                 current_rows = {int(x["row"]): x for x in table.get_records_with_row()}
                 run_rows_live = {idx: current_rows.get(idx, {}) for idx in run_rows.keys()}
                 unlock_still_processing(table, run_rows_live)
+
+        if row_limit is not None and totals.processed >= row_limit:
+            break
 
         batch += 1
         _progress(detailed_logging, "A preparar próximo lote.", run_id=run_id, next_batch=batch)
@@ -657,6 +680,9 @@ def main() -> int:
     iduser = (env_str("IDUSER", "USERJOB") or "USERJOB").strip() or "USERJOB"
 
     run_caixas_bancos = env_bool("RUN_CAIXAS_BANCOS", default=True)
+    max_rows_per_run = env_int("MAX_ROWS_PER_RUN", 0)
+    if max_rows_per_run <= 0:
+        max_rows_per_run = None
 
     configure_logging(settings, console_level="INFO" if detailed_logging else None)
     ensure_artifacts_dirs(settings)
@@ -724,6 +750,7 @@ def main() -> int:
                 iduser=iduser,
                 allow_retry=allow_retry,
                 run_caixas_bancos=run_caixas_bancos,
+                max_rows_per_run=max_rows_per_run,
                 detailed_logging=detailed_logging,
                 entradas_saidas=entradas_saidas,
                 transferencias=transferencias,

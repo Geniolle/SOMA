@@ -10,7 +10,9 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 from soma_app.automation.actions import Actions
+from soma_app.config.fields import TransferenciaField, field_name
 from soma_app.config.locators import apply_locator_overrides
+from soma_app.config.urls import DEFAULT_SITE_HOME_URL
 from soma_app.domain.models import ContaOrdemRow
 from soma_app.infra.trace import log_kv, step
 
@@ -52,7 +54,7 @@ class TransferenciasPage:
     def __init__(self, actions: Actions, settings: Any):
         self.a = actions
         self.settings = settings
-        self.home_url = (getattr(settings, "site_home_url", "") or "https://verbodavida.info/IVV/").strip()
+        self.home_url = (getattr(settings, "site_home_url", "") or DEFAULT_SITE_HOME_URL).strip()
         self.timeout = int(getattr(settings, "timeout_seconds", 20) or 20)
         apply_locator_overrides(self, "transferencias")
 
@@ -84,10 +86,15 @@ class TransferenciasPage:
         except Exception:
             pass
 
-    def _select2_choose_verified(self, opener: Locator, value: str, *, row: ContaOrdemRow, field: str) -> None:
+    @staticmethod
+    def _field(field: TransferenciaField | str) -> str:
+        return field_name(field)
+
+    def _select2_choose_verified(self, opener: Locator, value: str, *, row: ContaOrdemRow, field: TransferenciaField | str) -> None:
         v = (value or "").strip()
+        field_key = self._field(field)
         if not v:
-            raise ValueError(f"{field} vazio na sheet (linha {row.row_number}). Preenche a coluna correta (ex.: CAIXA SAIDA).")
+            raise ValueError(f"{field_key} vazio na sheet (linha {row.row_number}). Preenche a coluna correta (ex.: CAIXA SAIDA).")
 
         self._dismiss_alerts()
 
@@ -119,10 +126,10 @@ class TransferenciasPage:
                 el = self.a.driver.find_element(*opener)
                 txt = (el.text or "").strip()
             if v.lower() not in txt.lower():
-                raise RuntimeError(f"{field} não foi selecionado (linha {row.row_number}). Esperado conter '{v}', mas ficou '{txt}'.")
+                raise RuntimeError(f"{field_key} não foi selecionado (linha {row.row_number}). Esperado conter '{v}', mas ficou '{txt}'.")
         except Exception:
-            p = self.a.screenshot(f"transfer_select2_fail_{field.lower().replace(' ','_')}_row_{row.row_number}")
-            log_kv(log, "Select2 não confirmou seleção.", level=logging.ERROR, field=field, row=row.row_number, value=v, url=self.a.driver.current_url, screenshot=p)
+            p = self.a.screenshot(f"transfer_select2_fail_{field_key.lower()}_row_{row.row_number}")
+            log_kv(log, "Select2 não confirmou seleção.", level=logging.ERROR, field=field_key, row=row.row_number, value=v, url=self.a.driver.current_url, screenshot=p)
             raise
 
     def open_new(self, row: ContaOrdemRow) -> None:
@@ -151,10 +158,10 @@ class TransferenciasPage:
         )
 
         with step(log, "transfer.fill", row=row.row_number):
-            self._select2_choose_verified(self.CAIXA_SAIDA, row.caixa_saida, row=row, field="CAIXA SAÍDA")
+            self._select2_choose_verified(self.CAIXA_SAIDA, row.caixa_saida, row=row, field=self._field(TransferenciaField.CAIXA_SAIDA))
             self.a.type(self.VALOR, str(row.importancia))
             time.sleep(0.5)
-            self._select2_choose_verified(self.CAIXA_ENTRADA, row.caixa, row=row, field="CAIXA ENTRADA")
+            self._select2_choose_verified(self.CAIXA_ENTRADA, row.caixa, row=row, field=self._field(TransferenciaField.CAIXA_ENTRADA))
             self.a.type(self.DATA, row.data_mov)
             self.a.type(self.DESCRICAO, row.descricao_soma, clear=False)
 

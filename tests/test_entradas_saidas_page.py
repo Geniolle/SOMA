@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from selenium.common.exceptions import TimeoutException
 
 from soma_app.automation.pages.entradas_saidas_page import EntradasSaidasPage
+from soma_app.config.fields import FORM_FIELD_REGISTRY, field_names
 
 
 class FakeActions:
@@ -110,6 +111,13 @@ def test_type_and_validate_candidates_raises_when_field_stays_empty(monkeypatch)
 def test_page_loads_description_locator_from_external_file(tmp_path):
     locators_path = tmp_path / "locators.json"
     from soma_app.config.locators import _is_locator, _is_locator_list
+    registry_fields = set(field_names(FORM_FIELD_REGISTRY.entradas_saidas.common))
+    registry_fields.update(field_names(FORM_FIELD_REGISTRY.entradas_saidas.entrada_specific))
+    registry_fields.update(field_names(FORM_FIELD_REGISTRY.entradas_saidas.saida_specific))
+    registry_fields.update(field_names(FORM_FIELD_REGISTRY.entradas_saidas.search))
+    registry_fields.update(field_names(FORM_FIELD_REGISTRY.transferencias))
+    registry_fields.update(field_names(FORM_FIELD_REGISTRY.caixas_bancos))
+
     entradas_saidas_cfg = {}
     for name, val in vars(EntradasSaidasPage).items():
         if name.isupper() and name not in {"RADIO_ANY_CANDIDATES", "FORM_READY_CANDIDATES", "ANY_VALUE_CANDIDATES"}:
@@ -118,6 +126,8 @@ def test_page_loads_description_locator_from_external_file(tmp_path):
             elif _is_locator_list(val):
                 entradas_saidas_cfg[name] = [f"//dummy-{name.lower()}"]
 
+    for field_name_value in registry_fields:
+        entradas_saidas_cfg.setdefault(field_name_value, f"//dummy-{field_name_value.lower()}")
     entradas_saidas_cfg["DESCRICAO"] = "//input[@name='descricao_custom']"
     entradas_saidas_cfg["DESCRICAO_CANDIDATES"] = [
         "//input[@name='descricao_custom']",

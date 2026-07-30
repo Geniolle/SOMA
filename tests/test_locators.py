@@ -137,3 +137,15 @@ def test_load_real_locators_json_configuration():
     common_cfg = load_page_locator_config(None, "common")
     assert common_cfg is not None
     assert "SELECT2_SEARCH" in common_cfg
+
+    entradas_cfg = load_page_locator_config(None, "entradas_saidas")
+    assert entradas_cfg is not None
+    assert entradas_cfg["DESCRICAO"] == {"by": "css selector", "value": 'input[id="descricao_input"]'}
+    assert entradas_cfg["VALOR"] == {"by": "css selector", "value": 'input[name="valor"]'}
+    assert entradas_cfg["DATA_ENTRADA"] == {"by": "css selector", "value": 'input[name="data_entrada"]'}
+    assert entradas_cfg["FORMA_PAGAMENTO_ENTRADA"] == {
+        "by": "css selector",
+        "value": 'span[id^="select2-forma_pagamento-"][id$="-container"]',
+    }
+    assert entradas_cfg["CAIXA_ENTRADA_CONTAINER"] == "//select[@name='id_caixa_origem']/ancestor::div[1]"
+    assert entradas_cfg["FORM_READY_SELECT2"] == {"by": "css selector", "value": 'span[id="select2-plano-container"]'}
