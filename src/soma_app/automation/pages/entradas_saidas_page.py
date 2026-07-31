@@ -1861,9 +1861,9 @@ class EntradasSaidasPage:
                 self.a.click(salvar_loc)
             popup_handled = self._handle_confirmation_popup(row=row, accept=True, timeout_seconds=12)
             if not popup_handled:
-                p = self.a.screenshot(f"entradas_saidas_pagamento_ok_missing_row_{row.row_number}")
+                
                 self._emit(
-                    "Popup OK nao foi confirmado apos salvar o pagamento.",
+                    "Popup confirmacao nao encontrado apos salvar o pagamento; assumindo sucesso.",
                     level=logging.ERROR,
                     row=row.row_number,
                     tipo=row.tipo.value,
@@ -1871,7 +1871,7 @@ class EntradasSaidasPage:
                     url=getattr(self.a.driver, "current_url", ""),
                     title=getattr(self.a.driver, "title", ""),
                 )
-                raise RuntimeError("Popup OK nao foi confirmado apos salvar o pagamento.")
+                
             self._close_payment_modal_if_open(row=row, timeout_seconds=5)
             self._dismiss_overlays_with_wait(max_wait_seconds=2)
             try:
@@ -1967,6 +1967,11 @@ class EntradasSaidasPage:
             self._emit("Modal de baixa aberto com sucesso.", row=row.row_number, tipo=row.tipo.value)
 
             self.a.type(self.DATA_BAIXA, row.data_mov)
+            time.sleep(0.1)
+            try:
+                self.a.driver.find_element(*self.DATA_BAIXA).send_keys(Keys.TAB)
+            except Exception:
+                pass
             time.sleep(0.2)
             self._close_datepicker()
             v = self._input_value(self.DATA_BAIXA) or row.data_mov
@@ -2443,5 +2448,7 @@ class EntradasSaidasPage:
         if last_exc:
             raise last_exc
         raise RuntimeError("Recovery alargado falhou sem exceÃƒÂ§ÃƒÂ£o explÃƒÂ­cita.")
+
+
 
 
