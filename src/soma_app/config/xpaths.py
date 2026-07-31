@@ -12,7 +12,13 @@ CONFIRM_YES_XPATHS = (
     "//*[self::button or self::a][contains(normalize-space(.), 'Sim')]",
     "//*[self::button or self::a][contains(normalize-space(.), 'SIM')]",
     "//*[self::button or self::a][contains(normalize-space(.), 'Yes')]",
+    "//*[self::button or self::a][contains(normalize-space(.), 'Yes!')]",
     "//*[self::button or self::a][contains(normalize-space(.), 'OK')]",
+    "//*[self::button or self::a][contains(normalize-space(.), 'Ok')]",
+    "//*[self::button or self::a][contains(normalize-space(.), 'OK!')]",
+    "//*[self::button or self::a][contains(normalize-space(.), 'Ok!')]",
+    "//*[self::button or self::a][contains(normalize-space(.), 'Confirmar')]",
+    "//*[self::button or self::a][contains(normalize-space(.), 'Aceitar')]",
     "/html/body/ul/li/div/div[2]/button[1]",
 )
 

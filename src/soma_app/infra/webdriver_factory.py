@@ -4,7 +4,13 @@ from __future__ import annotations
 import logging
 import os
 import re
+import shutil
 import subprocess
+import ctypes
+import socket
+import tempfile
+import time
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterator, Optional
@@ -50,14 +56,83 @@ def _resolve_downloads_dir(settings: Any = None, downloads_dir: Optional[str] = 
     return paths["downloads_dir"]
 
 
+def _find_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+def _find_chrome_executable() -> str:
+    candidates = [
+        shutil.which("chrome"),
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    ]
+    for candidate in candidates:
+        if candidate and os.path.exists(candidate):
+            return candidate
+    raise FileNotFoundError("chrome.exe não encontrado.")
+
+
+def _launch_visible_chrome() -> tuple[int, str, subprocess.Popen[str]]:
+    chrome_exe = _find_chrome_executable()
+    port = _find_free_port()
+
+    temp_root = Path(os.environ.get("TMP", r"C:\tmp"))
+    temp_root.mkdir(parents=True, exist_ok=True)
+    profile_dir = tempfile.mkdtemp(prefix="soma_chrome_", dir=str(temp_root))
+
+    args = [
+        chrome_exe,
+        "--new-window",
+        f"--remote-debugging-port={port}",
+        "--remote-allow-origins=*",
+        f"--user-data-dir={profile_dir}",
+        "--start-maximized",
+        "--window-position=0,0",
+        "--window-size=1920,1080",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-background-networking",
+        "--disable-sync",
+        "--disable-notifications",
+        "--disable-default-apps",
+        "--disable-features=PushMessaging,MediaRouter,Translate",
+        "about:blank",
+    ]
+
+    proc = subprocess.Popen(
+        args,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL,
+    )
+
+    deadline = time.time() + 45
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/json/version", timeout=1.0) as resp:
+                body = resp.read().decode("utf-8", "ignore")
+                if "webSocketDebuggerUrl" in body:
+                    time.sleep(5)
+                    break
+        except Exception:
+            if proc.poll() is not None:
+                raise RuntimeError("Chrome terminou antes de abrir a porta de debugging.")
+            time.sleep(0.2)
+
+    return port, profile_dir, proc
+
+
 def _build_options(headless: bool, downloads_dir: str) -> Options:
     opt = Options()
 
     # Headless/viewport
     if headless:
         opt.add_argument("--headless=new")
-    
     # === BLINDAGEM CONTRA VERSÃO MOBILE / HEADLESS ===
+    opt.add_argument("--start-maximized")
+    opt.add_argument("--window-position=0,0")
     opt.add_argument("--window-size=1920,1080")
     opt.add_argument("--force-device-scale-factor=1")
     opt.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
@@ -105,6 +180,52 @@ def _build_service() -> Service:
         return Service(log_output=os.devnull)
     except TypeError:
         return Service()
+
+
+def _bring_window_to_foreground_by_pid(pid: int) -> bool:
+    if not pid:
+        return False
+
+    user32 = ctypes.windll.user32
+    handles: list[int] = []
+
+    WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+
+    def _enum_cb(hwnd, lparam):
+        proc_id = ctypes.c_ulong()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(proc_id))
+        if proc_id.value != pid:
+            return True
+        if user32.IsWindowVisible(hwnd):
+            handles.append(int(hwnd))
+        return True
+
+    try:
+        user32.EnumWindows(WNDENUMPROC(_enum_cb), 0)
+    except Exception:
+        return False
+
+    if not handles:
+        return False
+
+    hwnd = handles[0]
+    try:
+        user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+    except Exception:
+        pass
+    try:
+        user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040)
+    except Exception:
+        pass
+    try:
+        user32.SetForegroundWindow(hwnd)
+    except Exception:
+        pass
+    try:
+        user32.BringWindowToTop(hwnd)
+    except Exception:
+        pass
+    return True
 
 
 @dataclass
@@ -159,13 +280,45 @@ def create_driver(
     headless_v = _resolve_headless(settings, headless)
     downloads_v = _resolve_downloads_dir(settings, downloads_dir)
 
-    options = _build_options(headless=headless_v, downloads_dir=downloads_v)
     service = _build_service()
-
-    driver = webdriver.Chrome(service=service, options=options)
+    if headless_v:
+        options = _build_options(headless=headless_v, downloads_dir=downloads_v)
+        driver = webdriver.Chrome(service=service, options=options)
+    else:
+        port, profile_dir, chrome_proc = _launch_visible_chrome()
+        options = Options()
+        options.add_experimental_option("debuggerAddress", f"127.0.0.1:{port}")
+        driver = webdriver.Chrome(service=service, options=options)
+        log_kv(
+            logger,
+            "Chrome visible launcher",
+            pid=chrome_proc.pid,
+            port=port,
+            profile_dir=profile_dir,
+        )
     
     # === FORÇAR MAXIMIZAÇÃO (Dupla Segurança) ===
-    driver.maximize_window()
+    try:
+        driver.set_window_rect(0, 0, 1920, 1080)
+    except Exception:
+        pass
+    try:
+        driver.maximize_window()
+    except Exception:
+        pass
+
+    try:
+        caps = getattr(driver, "capabilities", {}) or {}
+        browser_pid = int(caps.get("goog:processID") or caps.get("processID") or 0)
+    except Exception:
+        browser_pid = 0
+
+    if browser_pid:
+        try:
+            found_window = _bring_window_to_foreground_by_pid(browser_pid)
+            log_kv(logger, "Chrome foreground probe", browser_pid=browser_pid, found_window=found_window)
+        except Exception:
+            pass
 
     # headless downloads via CDP (best effort)
     try:

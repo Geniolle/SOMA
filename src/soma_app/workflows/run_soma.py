@@ -250,7 +250,7 @@ def _bootstrap_backend(
         logger.warning("Validando a versÃ£o do ChromeDriver (inicializaÃ§Ã£o do browser)...")
         t0_drv = time.perf_counter()
 
-        state.bundle = WebDriverFactory.create(settings)
+        state.bundle = WebDriverFactory.create(settings, headless=headless)
 
         dt_drv_ms = int((time.perf_counter() - t0_drv) * 1000)
         driver_obj = getattr(state.bundle, "a", None)
@@ -675,7 +675,7 @@ def main() -> int:
     audit_event("RUN_START", run_id=run_id, sheet=ws)
 
     detailed_logging = env_bool("DETAILED_RUN_LOGGING", False)
-    headless = env_bool("HEADLESS", True)
+    headless = bool(getattr(settings, "headless", True))
     allow_retry = env_bool("ALLOW_RETRY_ERROR", False)
     iduser = (env_str("IDUSER", "USERJOB") or "USERJOB").strip() or "USERJOB"
 

@@ -157,3 +157,26 @@ def test_confirm_yes_xpaths_include_payment_popup():
     assert any("swal2-container" in xpath for xpath in CONFIRM_YES_XPATHS)
     assert any("realizar o pagamento" in xpath for xpath in CONFIRM_YES_XPATHS)
     assert "/html/body/ul/li/div/div[2]/button[1]" in CONFIRM_YES_XPATHS
+
+
+def test_payment_locators_are_case_insensitive():
+    entradas_cfg = load_page_locator_config(None, "entradas_saidas")
+    realizar = entradas_cfg["BTN_REALIZAR_PAGAMENTO_CANDIDATES"]
+    inserir = entradas_cfg["BTN_INSERIR_PAGAMENTO_SAIDA_CANDIDATES"]
+
+    assert any("translate(normalize-space(.)" in xpath and "realizar pagamento" in xpath for xpath in realizar)
+    assert inserir[0] == "/html/body/div[2]/div/div[2]/div/div/form/div[29]/div/div[2]/a"
+    assert any("translate(normalize-space(.)" in xpath and "inserir pagamento" in xpath for xpath in inserir)
+
+
+def test_payment_modal_locators_target_visible_controls():
+    entradas_cfg = load_page_locator_config(None, "entradas_saidas")
+    forma_modal = entradas_cfg["FORMA_PAGAMENTO_MODAL"]
+    caixa_modal = entradas_cfg["CAIXA_PAGAMENTO_MODAL"]
+    forma_candidates = " ".join(str(item) for item in entradas_cfg["FORMA_PAGAMENTO_MODAL_CANDIDATES"][1:])
+    caixa_candidates = " ".join(str(item) for item in entradas_cfg["CAIXA_PAGAMENTO_MODAL_CANDIDATES"][1:])
+
+    assert forma_modal["value"] == "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]/div[1]/div/select"
+    assert "name='forma_pagamento'" in forma_candidates
+    assert "following::select[@name='id_caixa_origem'][1]" in caixa_modal["value"]
+    assert "name='id_caixa_origem'" in caixa_candidates

@@ -201,6 +201,20 @@ class SheetsClient:
     def get_all_records(self, ws: str) -> List[Dict[str, Any]]:
         return self._ws(ws).get_all_records()
 
+    def get_all_records_raw(self, ws: str) -> List[Dict[str, Any]]:
+        """
+        Lê linhas sem numericização automática do gspread.
+
+        Útil quando valores monetários ou códigos precisam manter a forma
+        textual original da planilha, em vez de serem convertidos pelo parser
+        do gspread.
+        """
+        try:
+            return self._ws(ws).get_all_records(numericise_ignore=["all"])
+        except TypeError:
+            # Compatibilidade com versões mais antigas do gspread.
+            return self._ws(ws).get_all_records()
+
     def read_all_records(self, ws: str) -> List[Dict[str, Any]]:
         return self.get_all_records(ws)
 

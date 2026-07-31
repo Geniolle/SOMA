@@ -88,25 +88,47 @@
     "BTN_VOLTAR": "/html/body/div[2]/div/div[2]/div/div/form/div[30]/div/button[2]",
     "FORM_READY_SELECT2": { "by": "css selector", "value": "span[id=\"select2-plano-container\"]" },
     "OK_ALERT": "/html/body/div[5]/div/button[1]",
+    "OK_ALERT_CANDIDATES": [
+      { "by": "css selector", "value": "button.swal2-confirm" },
+      { "by": "css selector", "value": "button.swal2-confirm.swal2-styled" },
+      "//*[contains(@class,'swal2-confirm') and normalize-space(.)='OK']",
+      "//button[normalize-space(.)='OK']",
+      "//div[contains(@class,'swal2-container')]//button[contains(normalize-space(.), 'OK')]"
+    ],
     "SWAL_CONTAINER": { "by": "class_name", "value": "swal2-container" },
     "BTN_REALIZAR_PAGAMENTO": "/html/body/ul/li/div/div[2]/button[1]",
     "BTN_REALIZAR_PAGAMENTO_CANDIDATES": [
-      "//*[self::a or self::button][contains(normalize-space(.), 'Realizar pagamento')]",
-      "//*[self::a or self::button][contains(normalize-space(.), 'Realizar') and contains(normalize-space(.), 'pagamento')]",
-      "//*[self::a or self::button][contains(normalize-space(.), 'Pagar')]",
-      "//*[self::a or self::button][contains(normalize-space(.), 'Pagamento')]"
+      "//*[self::a or self::button][contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'realizar pagamento')]",
+      "//*[self::a or self::button][contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'realizar') and contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'pagamento')]",
+      "//*[self::a or self::button][contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'pagar')]"
     ],
     "BTN_INSERIR_PAGAMENTO_SAIDA": "/html/body/div[2]/div/div[2]/div/div/form/div[29]/div/div[2]/a",
     "BTN_INSERIR_PAGAMENTO_SAIDA_CANDIDATES": [
-      "//*[self::a or self::button][contains(normalize-space(.), 'Inserir pagamento')]",
-      "//*[self::a or self::button][contains(normalize-space(.), 'Inserir') and contains(normalize-space(.), 'pagamento')]",
-      "//*[self::a or self::button][contains(normalize-space(.), 'Pagamento')]"
+      "/html/body/div[2]/div/div[2]/div/div/form/div[29]/div/div[2]/a",
+      "//*[self::a or self::button][contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'inserir pagamento') and contains(@data-target, '#inserir')]",
+      "//*[self::a or self::button][contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'inserir') and contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'pagamento')]"
     ],
-    "DATA_PAGAMENTO_MODAL": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[1]/div[1]/div/input",
-    "FORMA_PAGAMENTO_MODAL": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]/div[1]/div/select",
-    "CAIXA_PAGAMENTO_MODAL": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[4]/div[2]/div/select",
-    "NUM_DOCUMENTO_MODAL": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]/div[3]/div/input",
-    "BTN_SALVAR_PAGAMENTO_MODAL": "/html/body/div[2]/div/div[5]/div/div/form/div[3]/button",
+    "DATA_PAGAMENTO_MODAL": { "by": "name", "value": "data_pagamento" },
+    "FORMA_PAGAMENTO_MODAL": { "by": "xpath", "value": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]/div[1]/div/select" },
+    "FORMA_PAGAMENTO_MODAL_CANDIDATES": [
+      { "by": "xpath", "value": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]/div[1]/div/select" },
+      "//label[contains(normalize-space(.), 'Forma de Pagamento')]/following::select[@name='forma_pagamento'][1]",
+      "//*[contains(normalize-space(.), 'Forma de Pagamento')]/following::select[@name='forma_pagamento'][1]"
+    ],
+    "CAIXA_PAGAMENTO_MODAL": { "by": "xpath", "value": "//label[contains(normalize-space(.), 'CAIXA')]/following::select[@name='id_caixa_origem'][1]" },
+    "CAIXA_PAGAMENTO_MODAL_CANDIDATES": [
+      { "by": "xpath", "value": "//label[contains(normalize-space(.), 'CAIXA')]/following::select[@name='id_caixa_origem'][1]" },
+      "//form//select[@name='id_caixa_origem']",
+      "//select[@name='id_caixa_origem']",
+      "//form//select[@name='id_caixa']",
+      "//select[@name='id_caixa']"
+    ],
+    "NUM_DOCUMENTO_MODAL": { "by": "xpath", "value": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]/div[3]/div/input" },
+    "BTN_SALVAR_PAGAMENTO_MODAL": { "by": "id", "value": "botao_pagamento" },
+    "MODAL_EXCLUIR_PAGAMENTO": { "by": "id", "value": "cancelar" },
+    "CHECK_EXCLUIR_PAGAMENTO": { "by": "css selector", "value": "input.pagamentos_check" },
+    "CHECK_EXCLUIR_PAGAMENTO_ALL": { "by": "css selector", "value": "input.all" },
+    "BTN_EXCLUIR_PAGAMENTO_MODAL": { "by": "id", "value": "cancelar_pagamento" },
     "BTN_SALVAR_PAGAMENTO_MODAL_CANDIDATES": [
       "//*[self::button or self::a][contains(normalize-space(.), 'Salvar Pagamento')]",
       "//*[self::button or self::a][contains(normalize-space(.), 'Salvar')]"
@@ -158,14 +180,21 @@
       "/html/body/div[2]/div/div[2]/a",
       "//*[self::a or self::button][contains(.,'Nova') and (contains(.,'Transfer') or contains(.,'transfer'))]"
     ],
-    "CAIXA_SAIDA": "/html/body/div[2]/div/div[2]/div/div/form/div[2]/div",
-    "VALOR": "/html/body/div[2]/div/div[2]/div/div/form/div[4]/div/input",
-    "CAIXA_ENTRADA": "/html/body/div[2]/div/div[2]/div/div/form/div[5]/div",
-    "DATA": "/html/body/div[2]/div/div[2]/div/div/form/div[8]/div/div/input",
-    "DESCRICAO": "/html/body/div[2]/div/div[2]/div/div/form/div[9]/div/textarea",
-    "BTN_SALVAR": "/html/body/div[2]/div/div[2]/div/div/form/div[10]/div/button[1]",
-    "BTN_VOLTAR": "/html/body/div[2]/div/div[2]/div/div/form/div[10]/div/button[2]",
+    "CAIXA_SAIDA": "/html/body/div[2]/div/div[2]/div/div/form/div[1]/div",
+    "VALOR": "/html/body/div[2]/div/div[2]/div/div/form/div[3]/div/input",
+    "CAIXA_ENTRADA": "/html/body/div[2]/div/div[2]/div/div/form/div[4]/div",
+    "DATA": "/html/body/div[2]/div/div[2]/div/div/form/div[7]/div/div/input",
+    "DESCRICAO": "/html/body/div[2]/div/div[2]/div/div/form/div[8]/div/textarea",
+    "BTN_SALVAR": "/html/body/div[2]/div/div[2]/div/div/form/div[9]/div/button[1]",
+    "BTN_VOLTAR": "/html/body/div[2]/div/div[2]/div/div/form/div[9]/div/button[2]",
     "OK_ALERT": "/html/body/div[5]/div/button[1]",
+    "OK_ALERT_CANDIDATES": [
+      { "by": "css selector", "value": "button.swal2-confirm" },
+      { "by": "css selector", "value": "button.swal2-confirm.swal2-styled" },
+      "//*[contains(@class,'swal2-confirm') and normalize-space(.)='OK']",
+      "//button[normalize-space(.)='OK']",
+      "//div[contains(@class,'swal2-container')]//button[contains(normalize-space(.), 'OK')]"
+    ],
     "SWAL_CONTAINER": { "by": "class_name", "value": "swal2-container" },
     "SELECT2_SEARCH": "/html/body/span/span/span[1]/input"
   },
