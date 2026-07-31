@@ -89,11 +89,21 @@
     "FORM_READY_SELECT2": { "by": "css selector", "value": "span[id=\"select2-plano-container\"]" },
     "OK_ALERT": "/html/body/div[5]/div/button[1]",
     "OK_ALERT_CANDIDATES": [
+      { "by": "css selector", "value": ".swal2-actions button" },
+      { "by": "css selector", "value": ".swal2-confirm" },
       { "by": "css selector", "value": "button.swal2-confirm" },
       { "by": "css selector", "value": "button.swal2-confirm.swal2-styled" },
-      "//*[contains(@class,'swal2-confirm') and normalize-space(.)='OK']",
-      "//button[normalize-space(.)='OK']",
-      "//div[contains(@class,'swal2-container')]//button[contains(normalize-space(.), 'OK')]"
+      "//div[contains(@class,'swal2-actions')]//button[1]",
+      "//button[contains(@class,'swal2-confirm') and contains(@class,'swal2-styled')]",
+      "//*[contains(@class,'swal2-confirm')]",
+      "//div[contains(@class,'swal2-popup')]//button[contains(@class,'swal2-confirm')]",
+      "//div[contains(@class,'swal2-container') and not(contains(@style,'display: none'))]//button[contains(@class,'swal2-confirm')]",
+      "//button[normalize-space()='OK']",
+      "//button[normalize-space()='Ok']",
+      "//div[contains(@class,'swal2-container')]//button[contains(normalize-space(), 'OK')]",
+      "//div[@role='alertdialog']//button[1]",
+      "//div[contains(@class,'modal-footer')]//button[@type='button'][contains(normalize-space(), 'OK') or contains(normalize-space(), 'Confirmar')]",
+      "/html/body/div[5]/div/button[1]"
     ],
     "SWAL_CONTAINER": { "by": "class_name", "value": "swal2-container" },
     "BTN_REALIZAR_PAGAMENTO": "/html/body/ul/li/div/div[2]/button[1]",
@@ -124,30 +134,49 @@
       "//select[@name='id_caixa']"
     ],
     "NUM_DOCUMENTO_MODAL": { "by": "xpath", "value": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]/div[3]/div/input" },
+    "NUM_DOCUMENTO_MODAL_CANDIDATES": [
+      { "by": "xpath", "value": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]/div[3]/div/input" },
+      "//label[contains(normalize-space(.), 'Nº Documento') or contains(normalize-space(.), 'Numero Documento')]/following::input[1]",
+      "//input[@name='num_documento' or @id='num_documento']",
+      "//form//input[contains(@placeholder, 'Nº') or contains(@placeholder, 'Numero')]"
+    ],
     "BTN_SALVAR_PAGAMENTO_MODAL": { "by": "id", "value": "botao_pagamento" },
+    "BTN_SALVAR_PAGAMENTO_MODAL_CANDIDATES": [
+      { "by": "id", "value": "botao_pagamento" },
+      "//*[self::button or self::a][contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'salvar pagamento')]",
+      "//form//button[contains(normalize-space(.), 'Salvar')]",
+      "//button[@id='botao_pagamento']"
+    ],
     "MODAL_EXCLUIR_PAGAMENTO": { "by": "id", "value": "cancelar" },
     "CHECK_EXCLUIR_PAGAMENTO": { "by": "css selector", "value": "input.pagamentos_check" },
     "CHECK_EXCLUIR_PAGAMENTO_ALL": { "by": "css selector", "value": "input.all" },
     "BTN_EXCLUIR_PAGAMENTO_MODAL": { "by": "id", "value": "cancelar_pagamento" },
-    "BTN_SALVAR_PAGAMENTO_MODAL_CANDIDATES": [
-      "//*[self::button or self::a][contains(normalize-space(.), 'Salvar Pagamento')]",
-      "//*[self::button or self::a][contains(normalize-space(.), 'Salvar')]"
-    ],
     "BTN_INSERIR_BAIXA": "/html/body/div[2]/div/div[3]/div/div/table/tbody/tr[1]/td[6]/button",
     "BTN_INSERIR_BAIXA_CANDIDATES": [
-      "//*[self::a or self::button][contains(normalize-space(.), 'Inserir baixa')]",
-      "//*[self::a or self::button][contains(normalize-space(.), 'Inserir') and contains(normalize-space(.), 'baixa')]",
-      "//*[self::a or self::button][contains(normalize-space(.), 'Baixa')]"
+      "/html/body/div[2]/div/div[3]/div/div/table/tbody/tr[1]/td[6]/button",
+      "//table//tbody//tr[1]//td[6]//button[contains(normalize-space(.), 'Inserir') or contains(normalize-space(.), 'Baixa')]",
+      "//table//tbody//tr[1]//button[contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'inserir') and contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'baixa')]",
+      "//*[self::a or self::button][contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'inserir baixa')]",
+      "//*[self::a or self::button][contains(normalize-space(.), 'Inserir') and contains(normalize-space(.), 'Baixa')]"
     ],
     "DATA_BAIXA": "/html/body/div[2]/div/div[4]/div/div/form/div[2]/div/div/div[1]/div/div/input",
+    "DATA_BAIXA_CANDIDATES": [
+      "/html/body/div[2]/div/div[4]/div/div/form/div[2]/div/div/div[1]/div/div/input",
+      "//label[contains(normalize-space(.), 'Data') and contains(normalize-space(.), 'Baixa')]/following::input[1]",
+      "//form//input[@type='date' or @type='text'][contains(@name, 'data') or contains(@id, 'data')]",
+      "//form//div[contains(., 'Data')]//input[@type='date' or @type='text']"
+    ],
     "POPUP_CLICK_CANDIDATES": [
       "/html/body/div[2]/div/div[4]/div/div/form/div[2]/div/div/div[2]",
-      "/html/body/div[2]/div/div[4]/div/div/form/div[3]"
+      "/html/body/div[2]/div/div[4]/div/div/form/div[3]",
+      "//form//div[contains(@class, 'datepicker') or contains(@class, 'popup')]"
     ],
     "BTN_SALVAR_BAIXA": "/html/body/div[2]/div/div[4]/div/div/form/div[3]/button",
     "BTN_SALVAR_BAIXA_CANDIDATES": [
-      "//*[self::button or self::a][contains(normalize-space(.), 'Salvar Baixa')]",
-      "//*[self::button or self::a][contains(normalize-space(.), 'Salvar')]"
+      "/html/body/div[2]/div/div[4]/div/div/form/div[3]/button",
+      "//*[self::button or self::a][contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'salvar baixa')]",
+      "//form//button[contains(normalize-space(.), 'Salvar')]",
+      "//*[self::button or self::a][contains(normalize-space(.), 'Salvar Baixa')]"
     ],
     "PESQ_DESCRICAO": "/html/body/div[2]/div/div[3]/div/div/form/div[3]/div/input",
     "RADIO_PERIODO": "/html/body/div[2]/div/div[3]/div/div/form/div[7]/div/div/input",
@@ -189,11 +218,14 @@
     "BTN_VOLTAR": "/html/body/div[2]/div/div[2]/div/div/form/div[9]/div/button[2]",
     "OK_ALERT": "/html/body/div[5]/div/button[1]",
     "OK_ALERT_CANDIDATES": [
+      { "by": "css selector", "value": ".swal2-actions button" },
+      { "by": "css selector", "value": ".swal2-confirm" },
       { "by": "css selector", "value": "button.swal2-confirm" },
       { "by": "css selector", "value": "button.swal2-confirm.swal2-styled" },
-      "//*[contains(@class,'swal2-confirm') and normalize-space(.)='OK']",
-      "//button[normalize-space(.)='OK']",
-      "//div[contains(@class,'swal2-container')]//button[contains(normalize-space(.), 'OK')]"
+      "//div[contains(@class,'swal2-actions')]//button[1]",
+      "//*[contains(@class,'swal2-confirm') and normalize-space()='OK']",
+      "//button[normalize-space()='OK']",
+      "//div[contains(@class,'swal2-container')]//button[contains(normalize-space(), 'OK')]"
     ],
     "SWAL_CONTAINER": { "by": "class_name", "value": "swal2-container" },
     "SELECT2_SEARCH": "/html/body/span/span/span[1]/input"

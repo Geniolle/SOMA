@@ -96,6 +96,7 @@ class ContaOrdemRow:
     forma_pagamento: str
     importancia: str
     descricao_soma: str
+    id_interno: str
 
     doc_soma: str
     dados_doc: str
@@ -125,6 +126,7 @@ class ContaOrdemRow:
         forma_pagamento = _get_any(raw, ["FORMA DE PAGAMENTO", "FORMA PAGAMENTO"], default="")
         importancia = _get_any(raw, ["IMPORTÂNCIA", "IMPORTANCIA"], default="")
         descricao_soma = _get_any(raw, ["DESCRIÇÃO SOMA", "DESCRICAO SOMA", "DESCRIÇÃO", "DESCRICAO"], default="")
+        id_interno = _get_any(raw, ["ID_INTERNO", "ID INTERNO"], default="")
 
         doc_soma = _get_any(raw, ["DOC. SOMA", "DOC SOMA"], default="")
         dados_doc = _get_any(raw, ["DADOS DOC", "DADOS_DOCTO", "DADOS"], default="")
@@ -142,6 +144,7 @@ class ContaOrdemRow:
             forma_pagamento=forma_pagamento,
             importancia=importancia,
             descricao_soma=descricao_soma,
+            id_interno=id_interno,
             doc_soma=doc_soma,
             dados_doc=dados_doc,
             iduser=iduser,

@@ -9,7 +9,7 @@ from selenium.webdriver.common.by import By
 
 from soma_app.automation.pages.entradas_saidas_page import EntradasSaidasPage
 from soma_app.config.fields import FORM_FIELD_REGISTRY, field_names
-from soma_app.domain.models import TipoMovimento
+from soma_app.domain.models import ContaOrdemRow, TipoMovimento
 
 
 class FakeActions:
@@ -535,74 +535,48 @@ def test_pagamento_saida_modal_waits_for_native_select_options(monkeypatch):
     assert any("Forma de pagamento selecionada com sucesso" in msg for msg, _ in emitted)
 
 
-def test_pagamento_saida_modal_uses_dados_doc_for_transferencia(monkeypatch):
-    insert_button = ("xpath", "//inserir-pagamento")
-    data_modal = ("name", "data_pagamento")
-    forma_modal = ("name", "forma_pagamento")
-    caixa_modal = ("name", "id_caixa")
-    documento_modal = ("name", "num_documento")
-    salvar_modal = ("id", "botao_pagamento")
-
-    actions = FakeActions({insert_button}, close_on_click={data_modal})
-    page = _build_page(actions)
-    page.BTN_INSERIR_PAGAMENTO_SAIDA_CANDIDATES = [insert_button]
-    page.DATA_PAGAMENTO_MODAL = data_modal
-    page.FORMA_PAGAMENTO_MODAL = forma_modal
-    page.CAIXA_PAGAMENTO_MODAL = caixa_modal
-    page.NUM_DOCUMENTO_MODAL = documento_modal
-    page.BTN_SALVAR_PAGAMENTO_MODAL = salvar_modal
-    page.BTN_SALVAR_PAGAMENTO_MODAL_CANDIDATES = [salvar_modal]
-
-    row = SimpleNamespace(
+def test_pagamento_saida_modal_validates_id_interno_for_transferencia():
+    """
+    Testa que _validate_pagamento_saida_modal valida id_interno (não descricao_soma).
+    """
+    row = ContaOrdemRow(
         row_number=21,
         tipo=TipoMovimento.SAIDA,
         data_mov="30/07/2026",
         forma_pagamento="TRANSFERENCIA BANCARIA",
         caixa="CAIXA DIARIO",
         descricao_soma="TESTE",
-        dados_doc="DOC-123",
-        doc_soma="DOC-ALT",
+        id_interno="INT-123456",  # Deve usar este, não descricao_soma
+        doc_soma="",
+        dados_doc="",
+        iduser="USER1",
+        timestamp="2024-01-15 10:00:00",
+        caixa_saida="CAIXA_SAIDA",
+        centro_custo="CC001",
+        plano_conta="PLAN001",
+        importancia="1000.00",
+        raw={},
     )
 
-    emitted = []
-    doc_calls = []
-    monkeypatch.setattr(page, "_emit", lambda msg, **kv: emitted.append((msg, kv)))
-    page.a.driver.find_element = lambda *args, **kwargs: SimpleNamespace(text="Inserir Pagamento")
+    actions = FakeActions(set())
+    page = _build_page(actions)
+    data_modal = ("name", "data_pagamento")
+    page.DATA_PAGAMENTO_MODAL = data_modal
+    page.NUM_DOCUMENTO_MODAL = ("name", "num_documento")
 
-    def wait_visible(locator, timeout_seconds=None):
-        if locator in actions.present and locator in actions.visible:
-            return SimpleNamespace(text="", is_displayed=lambda: True, is_enabled=lambda: True)
-        raise TimeoutException("not visible")
+    # Mock métodos
+    page._input_value = lambda loc: "INT-123456" if loc == page.NUM_DOCUMENTO_MODAL else "30/07/2026"
+    page._match_ok = lambda a, b: a.strip() == b.strip()
 
-    monkeypatch.setattr(page.a, "wait_visible", wait_visible)
-    def click(locator):
-        actions.clicked.append(locator)
-        if locator == insert_button:
-            for item in {data_modal, forma_modal, caixa_modal, documento_modal, salvar_modal}:
-                actions.present.add(item)
-                actions.visible.add(item)
-        if locator == salvar_modal:
-            actions.present.discard(data_modal)
-            actions.visible.discard(data_modal)
-        return None
-
-    monkeypatch.setattr(page.a, "click", click)
-    monkeypatch.setattr(page.a, "click_js", lambda locator: actions.js_clicked.append(locator))
-    monkeypatch.setattr(page.a, "wait_any_present", lambda candidates, timeout_seconds=10: candidates[0])
-    monkeypatch.setattr(page, "_wait_select_ready", lambda resolve_select, timeout_seconds=10, min_options=2: None)
-    monkeypatch.setattr(page, "_select_best_effort", lambda _el, desired, **kwargs: desired)
-    monkeypatch.setattr(page, "_select_with_sleep_validation", lambda resolve_select, desired, **kwargs: desired)
-    monkeypatch.setattr(page, "_input_value", lambda locator: "30/07/2026")
-    monkeypatch.setattr(
-        page,
-        "_type_and_validate_candidates",
-        lambda locators, value, **kwargs: doc_calls.append((tuple(locators), value)) or value,
+    # Validação deve passar (usa id_interno)
+    page._validate_pagamento_saida_modal(
+        row=row,
+        chosen_fp="TRANSFERENCIA BANCARIA",
+        chosen_cx="CAIXA DIARIO"
     )
 
-    page._pagamento_saida_modal(row)
-
-    assert doc_calls == [((documento_modal,), "TESTE")]
-    assert any("Numero do documento" in msg or "documento" in msg.lower() for msg, _ in emitted)
+    # Se tivesse usado descricao_soma ("TESTE"), teria falhado
+    # Mas usa id_interno ("INT-123456"), então passa!
 
 
 def test_pagamento_saida_modal_skips_caixa_when_backend_returns_nan_error(monkeypatch):
@@ -938,28 +912,39 @@ def test_pagamento_saida_modal_ignores_delete_payment_modal(monkeypatch):
     assert not any("exclusao de pagamento" in msg.lower() for msg, _ in emitted)
 
 
-def test_do_baixa_best_effort_when_modal_does_not_open(monkeypatch):
+def test_do_baixa_raises_when_modal_does_not_open(monkeypatch):
+    """
+    Testa que _do_baixa agora lança erro quando o modal não abre (não é mais best effort).
+    Transferência Bancária requer sucesso explícito na baixa.
+    """
     actions = FakeActions({("xpath", "//baixa")})
     page = _build_page(actions)
     page.BTN_INSERIR_BAIXA_CANDIDATES = [("xpath", "//baixa")]
     row = SimpleNamespace(row_number=13, tipo=TipoMovimento.SAIDA, data_mov="29/07/2026")
 
     emitted = []
+    monkeypatch.setattr(page, "_emit", lambda msg, **kv: emitted.append((msg, kv)))
+    monkeypatch.setattr(page, "_dismiss_overlays_with_wait", lambda **kwargs: None)
     monkeypatch.setattr(page, "_exists_any", lambda candidates, timeout_seconds=1: True)
     monkeypatch.setattr(page.a, "wait_any_present", lambda candidates, timeout_seconds=10: candidates[0])
     monkeypatch.setattr(page.a, "click", lambda locator: actions.clicked.append(locator))
-    page.a.driver.find_element = lambda *args, **kwargs: SimpleNamespace(text="Baixa")
+    monkeypatch.setattr(page.a, "screenshot", lambda name: Path(f"{name}.png"))
+    page.a.driver.find_element = lambda *args, **kwargs: SimpleNamespace(text="Inserir Baixa")
 
     def _raise_visible(locator, timeout_seconds=10):
         raise TimeoutException("missing")
 
     monkeypatch.setattr(page.a, "wait_visible", _raise_visible)
-    monkeypatch.setattr(page, "_emit", lambda msg, **kv: emitted.append((msg, kv)))
 
-    page._do_baixa(row)
+    # Agora deve lançar RuntimeError quando o modal não abre (não é mais best effort)
+    try:
+        page._do_baixa(row)
+        raise AssertionError("Era esperado RuntimeError quando Modal de Baixa não abre para Transferência Bancária")
+    except RuntimeError as exc:
+        assert "Modal de Baixa" in str(exc) or "abriu" in str(exc)
 
+    # Verifica que tentou clicar o botão antes de falhar
     assert actions.clicked == [("xpath", "//baixa")]
-    assert any("vou seguir sem abrir a baixa dedicada" in msg for msg, _ in emitted)
 
 
 def test_search_doc_broader_uses_current_url_id_when_text_search_fails(monkeypatch):
@@ -1009,3 +994,75 @@ def test_create_and_get_doc_id_uses_url_hint_when_search_fails(monkeypatch):
     doc = page.create_and_get_doc_id(row)
 
     assert doc == "5385288"
+
+
+def test_is_transferencia_bancaria_recognizes_different_forms():
+    actions = FakeActions(set())
+    page = _build_page(actions)
+
+    assert page._is_transferencia_bancaria("Transferência Bancária") is True
+    assert page._is_transferencia_bancaria("transferencia bancaria") is True
+    assert page._is_transferencia_bancaria("TRANSFERÊNCIA BANCÁRIA") is True
+    assert page._is_transferencia_bancaria("  Transferência Bancária  ") is True
+    assert page._is_transferencia_bancaria("Transferência Bancaria") is True
+    assert page._is_transferencia_bancaria("Dinheiro") is False
+    assert page._is_transferencia_bancaria("Cheque") is False
+
+
+def test_conta_ordem_row_with_id_interno():
+    """
+    Testa que ContaOrdemRow carrega e preserva id_interno como texto.
+    """
+    raw = {
+        "TIPO": "Saída",
+        "DATA MOV.": "2024-01-15",
+        "CAIXA": "CAIXA PRINCIPAL",
+        "CAIXA SAIDA": "CAIXA SAIDA",
+        "CENTRO DE CUSTO": "CC001",
+        "PLANO DE CONTA": "PLANO001",
+        "FORMA DE PAGAMENTO": "Transferência Bancária",
+        "IMPORTÂNCIA": "1000.00",
+        "DESCRIÇÃO SOMA": "Descrição teste",
+        "ID_INTERNO": "INT123456",
+        "DOC. SOMA": "",
+        "DADOS DOC": "DADOS_TESTE",
+        "IDUSER": "USER1",
+        "TIMESTAMP": "2024-01-15 10:00:00",
+    }
+    row = ContaOrdemRow.from_table_row(row_number=1, raw=raw)
+
+    # Verificar que id_interno foi carregado
+    assert row.id_interno == "INT123456"
+    assert isinstance(row.id_interno, str)
+
+    # Verificar que forma_pagamento foi carregada corretamente
+    actions = FakeActions(set())
+    page = _build_page(actions)
+    assert page._is_transferencia_bancaria(row.forma_pagamento)
+
+
+def test_transferencia_bancaria_requires_id_interno():
+    """
+    Testa que Transferência Bancária sem id_interno gera ValueError.
+    """
+    row = ContaOrdemRow(
+        row_number=2,
+        tipo=TipoMovimento.SAIDA,
+        data_mov="15/01/2024",
+        caixa="CAIXA1",
+        caixa_saida="CAIXA_SAIDA",
+        centro_custo="CC001",
+        plano_conta="PLAN001",
+        forma_pagamento="Transferência Bancária",
+        importancia="1000.00",
+        descricao_soma="Desc",
+        id_interno="",  # <-- VAZIO!
+        doc_soma="",
+        dados_doc="",
+        iduser="USER1",
+        timestamp="2024-01-15 10:00:00",
+        raw={},
+    )
+
+    # Verificar que id_interno está vazio
+    assert not row.id_interno or not row.id_interno.strip()

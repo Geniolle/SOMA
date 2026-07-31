@@ -1861,13 +1861,13 @@ class EntradasSaidasPage:
                 self.a.click(salvar_loc)
             popup_handled = self._handle_confirmation_popup(row=row, accept=True, timeout_seconds=12)
             if not popup_handled:
-                
+                p_current = self.a.screenshot(f"entradas_saidas_pagamento_popup_not_found_row_{row.row_number}")
                 self._emit(
                     "Popup confirmacao nao encontrado apos salvar o pagamento; assumindo sucesso.",
                     level=logging.ERROR,
                     row=row.row_number,
                     tipo=row.tipo.value,
-                    screenshot=p,
+                    screenshot=p_current,
                     url=getattr(self.a.driver, "current_url", ""),
                     title=getattr(self.a.driver, "title", ""),
                 )
