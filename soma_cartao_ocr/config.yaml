@@ -1,0 +1,56 @@
+google:
+  service_account_file: credentials/soma-cartao-ocr.json
+  project_id: soma-verbo-braga-468506
+
+drive:
+  folder_id: 1mwJmtDnPOMrlKkJuUL91iCkYxHI0Noll
+  folder_name: EXTRATO_CARTÃO_Images
+  filename: 07-2026.IMAGEM.102342.jpg
+
+ocr:
+  language_hints: [pt, en]
+
+preprocessing:
+  max_input_side: 2600
+  output_scale: 2.0
+  crop_document: true
+  deskew: true
+  remove_shadows: true
+  adaptive_threshold: true
+
+table:
+  # Limites relativos à largura da imagem já corrigida (0.0 a 1.0).
+  # Ajuste-os apenas se o relatório de diagnóstico mostrar colunas deslocadas.
+  columns:
+    data_movimento: [0.00, 0.10]
+    data_valor: [0.10, 0.17]
+    descricao: [0.17, 0.52]
+    pais: [0.52, 0.55]
+    moeda_original: [0.55, 0.65]
+    taxa_cambio: [0.65, 0.78]
+    debito_eur: [0.78, 0.88]
+    credito_eur: [0.88, 1.00]
+  row_tolerance_ratio: 0.010
+  header_terms: [data, movimento, descrição, descricao, país, pais, moeda, câmbio, cambio, débito, debito, crédito, credito]
+
+validation:
+  minimum_confidence: 0.75
+  require_two_dates: true
+  require_exactly_one_amount: true
+  year: 2026
+  allowed_months: [6, 7]
+
+output:
+  directory: output
+
+google_sheets:
+  enabled: true
+  spreadsheet_id: "1poVWJGSBb13_2S1YKEzvFmkB9Ru0ZVzfQ0OEcMkfOZw"
+  worksheet: "CARTÃO"
+  saidas_worksheet: "SAÍDAS"
+  write_mode: "append_idempotent"
+  dry_run: false
+  id_prefix: "CAR"
+  id_digits: 10
+  saidas_id_prefix: "SAI"
+

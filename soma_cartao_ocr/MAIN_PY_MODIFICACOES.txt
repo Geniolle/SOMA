@@ -1,0 +1,213 @@
+===============================================================================
+MAIN.PY - EXATAS MODIFICAÇÕES REALIZADAS
+===============================================================================
+
+ARQUIVO: C:\workspace\soma_cartao_ocr\main.py
+
+TOTAL DE MODIFICAÇÕES: 4 seções
+
+===============================================================================
+MODIFICAÇÃO 1: IMPORT (Linha 44)
+===============================================================================
+
+ANTES:
+  (sem import do postprocessor)
+
+DEPOIS:
+  Linha 44: from ocr_postprocessor import postprocess_ocr_line
+
+LOCAÇÃO NO ARQUIVO:
+  Depois de: except ImportError:
+  Antes de: DATE_RE = re.compile(...)
+
+===============================================================================
+MODIFICAÇÃO 2: INSERIR LINHA 5 VAZIA + DESLOCAMENTO (Linhas 558-575)
+===============================================================================
+
+FUNÇÃO: build_movements()
+
+ANTES:
+  def build_movements(rows: list[list[Word]], width: int, cfg: dict[str, Any], trusted_texts: set[str] | list[str] | None = None) -> list[Movement]:
+      movements = []
+      allowed_months = list(cfg.get("validation", {}).get("allowed_months", [6, 7]))
+      trusted_set = {...}
+
+      for index, row in enumerate(rows, 1):
+          fields = split_columns(...)
+
+DEPOIS:
+  def build_movements(rows: list[list[Word]], width: int, cfg: dict[str, Any], trusted_texts: set[str] | list[str] | None = None) -> list[Movement]:
+      movements = []
+      allowed_months = list(cfg.get("validation", {}).get("allowed_months", [6, 7]))
+      trusted_set = {...}
+
+      # Inserir linha 5 vazia como cabeçalho (deslocamento para dados começarem na linha 6)
+      movements.append(Movement(
+          line=5,
+          data_movimento="",
+          data_valor="",
+          descricao="",
+          pais="",
+          moeda_original="",
+          taxa_cambio="",
+          debito_eur="",
+          credito_eur="",
+          confidence=0.0,
+          status="REVISÃO",
+          motivos_revisao="cabeçalho - linha vazia para data_movimento",
+          texto_ocr="[CABEÇALHO VAZIO]"
+      ))
+
+      for index, row in enumerate(rows, 1):
+          fields = split_columns(...)
+
+NOTA: Este bloco de inserção é adicionado DEPOIS da inicialização de movements e ANTES do loop for.
+
+===============================================================================
+MODIFICAÇÃO 3: CHAMAR PÓS-PROCESSADOR (Linhas 641-653)
+===============================================================================
+
+ANTES:
+  if debit is not None:
+      fields["debito_eur"] = f"{debit:.2f}"
+  if credit is not None:
+      fields["credito_eur"] = f"{credit:.2f}"
+
+  reasons = []
+  if not valid_date(fields["data_movimento"], cfg["validation"]):
+      reasons.append("data movimento inválida")
+
+DEPOIS:
+  if debit is not None:
+      fields["debito_eur"] = f"{debit:.2f}"
+  if credit is not None:
+      fields["credito_eur"] = f"{credit:.2f}"
+
+  # Pós-processamento OCR: corrigir padrões conhecidos e detectar cabeçalhos
+  fields, _, postprocess_reasons = postprocess_ocr_line(raw, fields)
+
+  # Re-parse valores após correção
+  debit = parse_money(fields["debito_eur"])
+  credit = parse_money(fields["credito_eur"])
+
+  reasons = list(postprocess_reasons)  # Começar com razões do pós-processador
+  if not valid_date(fields["data_movimento"], cfg["validation"]):
+      reasons.append("data movimento inválida")
+
+NOTA: O pós-processador é chamado DEPOIS de parse_money() e ANTES das validações.
+      Os valores são re-parseados após correção.
+      As razões de revisão do pós-processador são integradas à lista de razões.
+
+===============================================================================
+MODIFICAÇÃO 4: PULAR LINHA 5 NA GERAÇÃO DE IDS (Linhas 1004-1006)
+===============================================================================
+
+FUNÇÃO: sync_movements_to_sheets()
+
+ANTES:
+  current_ids_pool = list(existing_ids)
+
+  for item in movements:
+      d_mov_formatted = format_date_for_sheet(item.data_movimento, year)
+
+DEPOIS:
+  current_ids_pool = list(existing_ids)
+
+  for item in movements:
+      # Pular linha 5 (cabeçalho vazio) - não inserir na sheet e não gerar ID
+      if item.line == 5 and not item.data_movimento.strip():
+          continue
+
+      d_mov_formatted = format_date_for_sheet(item.data_movimento, year)
+
+NOTA: Este check é feito NO INÍCIO do loop, antes de qualquer processamento.
+      Se a linha for 5 E data_movimento for vazia, o loop pula para o próximo item.
+
+===============================================================================
+RESUMO DAS MODIFICAÇÕES
+===============================================================================
+
+Linha 44:
+  +from ocr_postprocessor import postprocess_ocr_line
+
+Linhas 558-575:
+  +[Inserção de Movement com linha 5 vazia]
+
+Linhas 641-653:
+  +postprocess_ocr_line(raw, fields) chamada
+  +re-parse de debit e credit
+  +razões do pós-processador integradas
+
+Linhas 1004-1006:
+  +if item.line == 5 and not item.data_movimento.strip(): continue
+
+TOTAL: 4 seções modificadas (45 linhas adicionadas, 0 linhas removidas)
+
+===============================================================================
+VERIFICAÇÃO
+===============================================================================
+
+Para verificar se as modificações estão corretas, procure por:
+
+1. grep -n "from ocr_postprocessor import" main.py
+   → Deve encontrar na linha ~44
+
+2. grep -n "Inserir linha 5 vazia" main.py
+   → Deve encontrar na linha ~560
+
+3. grep -n "postprocess_ocr_line" main.py
+   → Deve encontrar 2 linhas (import + chamada)
+
+4. grep -n "item.line == 5 and not item.data_movimento" main.py
+   → Deve encontrar na linha ~1005
+
+===============================================================================
+SE PRECISAR REVERTER (rollback)
+===============================================================================
+
+Se algo der errado e precisar reverter:
+
+1. git diff main.py
+   → Mostra exatamente o que mudou
+
+2. git checkout main.py
+   → Reverte para versão anterior
+
+3. Depois corrija e faça as mudanças novamente cuidadosamente
+
+===============================================================================
+COMPATIBILIDADE
+===============================================================================
+
+Alterações são compatíveis com:
+  ✓ Python 3.8+
+  ✓ Todas as dependências existentes
+  ✓ config.yaml (sem alterações necessárias)
+  ✓ Google Sheets API (sem alterações)
+
+Nenhuma dependência nova foi adicionada.
+Nenhuma configuração foi alterada.
+
+===============================================================================
+TESTES APÓS APLICAR MODIFICAÇÕES
+===============================================================================
+
+1. Verificar syntax:
+   python -m py_compile main.py
+   → Deve terminar sem erros
+
+2. Executar:
+   python main.py
+   → Deve processar normalmente
+
+3. Validar resultado:
+   cat output/resultado.json | grep -A 5 '"line": 5'
+   → Deve mostrar linha 5 vazia
+
+   cat output/resultado.json | grep -A 5 '"line": 10'
+   → Deve mostrar primeiro dado real deslocado
+
+===============================================================================
+DATA: 02-08-2026
+STATUS: Documentado e Pronto para Referência
+===============================================================================

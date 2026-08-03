@@ -1,0 +1,11 @@
+# Credenciais e chaves privadas do Google
+credentials/
+*service-account*.json
+soma-cartao-ocr*.json
+
+# Saídas do programa e ambiente
+output/
+.venv/
+__pycache__/
+*.pyc
+.env
