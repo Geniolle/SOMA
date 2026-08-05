@@ -41,8 +41,8 @@ case $COMMAND in
         ;;
 
     start)
-        echo "▶️  Iniciando orquestrador-soma..."
-        pm2 start orquestrador-soma || {
+        echo "▶️  Iniciando bot-igreja..."
+        pm2 start bot-igreja || {
             echo "❌ Erro ao iniciar"
             exit 1
         }
@@ -52,8 +52,8 @@ case $COMMAND in
         ;;
 
     stop)
-        echo "⏹️  Parando orquestrador-soma..."
-        pm2 stop orquestrador-soma || {
+        echo "⏹️  Parando bot-igreja..."
+        pm2 stop bot-igreja || {
             echo "❌ Erro ao parar"
             exit 1
         }
@@ -63,8 +63,8 @@ case $COMMAND in
         ;;
 
     restart)
-        echo "🔄 Reiniciando orquestrador-soma..."
-        pm2 restart orquestrador-soma || {
+        echo "🔄 Reiniciando bot-igreja..."
+        pm2 restart bot-igreja || {
             echo "❌ Erro ao reiniciar"
             exit 1
         }
@@ -77,14 +77,14 @@ case $COMMAND in
     logs)
         echo "📋 Últimos Logs (30 linhas)"
         echo "================================================"
-        pm2 logs orquestrador-soma --lines 30 --nostream
+        pm2 logs bot-igreja --lines 30 --nostream
         echo ""
         ;;
 
     logs-f)
         echo "📋 Logs em Tempo Real (Ctrl+C para sair)"
         echo "================================================"
-        pm2 logs orquestrador-soma
+        pm2 logs bot-igreja
         ;;
 
     monit)
@@ -102,11 +102,11 @@ case $COMMAND in
         echo ""
         echo "2. CPU e Memória:"
         pm2 monit --summary 2>/dev/null || {
-            ps aux | grep -i python | grep -v grep | awk '{print "   CPU: " $3 "% | MEM: " $4 "%"}'
+            ps aux | grep -i bot-igreja | grep -v grep | awk '{print "   CPU: " $3 "% | MEM: " $4 "%"}'
         }
         echo ""
         echo "3. Últimas linhas do log:"
-        pm2 logs orquestrador-soma --lines 10 --nostream
+        pm2 logs bot-igreja --lines 10 --nostream
         echo ""
         ;;
 

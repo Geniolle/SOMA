@@ -57,12 +57,12 @@ echo "🔄 [4/5] Reiniciando processos PM2..."
 
 if command -v pm2 &> /dev/null; then
     # Parar o processo específico se existir
-    if pm2 list | grep -q "orquestrador-soma"; then
-        pm2 stop orquestrador-soma
-        pm2 restart orquestrador-soma
-        echo "   ✅ orquestrador-soma reiniciado"
+    if pm2 list | grep -q "bot-igreja"; then
+        pm2 stop bot-igreja
+        pm2 restart bot-igreja
+        echo "   ✅ bot-igreja reiniciado"
     else
-        echo "   ⚠️  orquestrador-soma não encontrado em pm2"
+        echo "   ⚠️  bot-igreja não encontrado em pm2"
     fi
 
     # Opção: reiniciar tudo
@@ -108,5 +108,5 @@ echo "📊 Para monitorar em tempo real:"
 echo "   pm2 monit"
 echo ""
 echo "📋 Para ver logs contínuos:"
-echo "   pm2 logs orquestrador-soma"
+echo "   pm2 logs bot-igreja"
 echo ""
