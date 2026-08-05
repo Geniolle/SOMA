@@ -32,17 +32,29 @@ Main.py: ✅ Existe
 
 ## 🔴 Problemas Identificados
 
-### Problema 1: SOMA não tem app PM2
-- ❌ Nenhum arquivo `ecosystem.config.js` ou `*.config.js`
-- ❌ SOMA não está registrado no PM2
-- ❌ Não há forma automática de iniciar SOMA
+### Problema 1: Chrome não instalado no servidor ❌ CRÍTICO
+```
+selenium.common.exceptions.SessionNotCreatedException
+Message: session not created
+from chrome not reachable
+```
+- ❌ Chrome não está instalado
+- ❌ ChromeDriver não consegue ser inicializado
+- ❌ SOMA depende de Chrome para funcionar
 
-### Problema 2: bot-igreja com 660 restarts
+**Solução:** Instalar Google Chrome + ChromeDriver
+
+### Problema 2: SOMA não tem app PM2 ✅ RESOLVIDO
+- ✅ Arquivo `ecosystem.config.js` criado
+- ✅ SOMA agora registrado no PM2 (soma-automation)
+- ✅ Forma automática de iniciar SOMA pronta
+
+### Problema 3: bot-igreja com 660 restarts
 - ⚠️ Processo WhatsApp está muito instável
 - ⚠️ Reinicia todo dia às 4AM automaticamente
 - ⚠️ Pode estar consumindo recursos
 
-### Problema 3: Confusão de processos
+### Problema 4: Confusão de processos
 - ⚠️ SOMA e bot-igreja são projetos completamente diferentes
 - ⚠️ Estão em diretórios diferentes
 - ⚠️ Usam linguagens diferentes (Python vs Node.js)
@@ -63,55 +75,50 @@ Main.py: ✅ Existe
 
 ---
 
-## 🚀 Solução Recomendada
+## 🚀 Solução - Instalar Chrome
 
-### Opção A: Criar arquivo ecosystem.config.js (Recomendado)
+### 1️⃣ Instalar Google Chrome (Ubuntu)
 ```bash
-# Criar arquivo de configuração PM2
-cat > ~/soma-automation/SOMA/ecosystem.config.js << 'EOF'
-module.exports = {
-  apps: [
-    {
-      name: "soma-automation",
-      script: "main.py",
-      interpreter: "/home/ubuntu/soma-automation/SOMA/.venv/bin/python",
-      cwd: "/home/ubuntu/soma-automation/SOMA",
-      instances: 1,
-      exec_mode: "fork",
-      env: {
-        RUN_ENV: "production",
-      },
-      log_date_format: "YYYY-MM-DD HH:mm:ss Z",
-      error_file: "logs/soma-error.log",
-      out_file: "logs/soma-out.log",
-      merge_logs: true,
-      max_size: "100M",
-      max_file: 14,
-      autorestart: true,
-      watch: false,
-      ignore_watch: ["logs", "artifacts", ".venv", "node_modules"],
-      min_uptime: "10s",
-      max_restarts: 10,
-      restart_delay: 4000,
-    }
-  ]
-};
-EOF
+ssh -i chave.key ubuntu@132.145.57.133 << 'SSH_EOF'
 
-# Registrar no PM2
-pm2 start ecosystem.config.js --name soma-automation
-pm2 save
+echo "Instalando Google Chrome..."
+curl -fsSL https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
+sudo apt-get update
+sudo apt-get install -y google-chrome-stable
+
+echo "Verificando instalação..."
+google-chrome --version
+
+SSH_EOF
 ```
 
-### Opção B: Iniciar manualmente
+### 2️⃣ Instalar ChromeDriver (compatível)
 ```bash
-cd ~/soma-automation/SOMA
-.venv/bin/python main.py
+ssh -i chave.key ubuntu@132.145.57.133 << 'SSH_EOF'
+
+echo "Instalando ChromeDriver..."
+CHROME_VERSION=$(google-chrome --version | awk '{print $NF}' | cut -d'.' -f1)
+CHROMEDRIVER_URL="https://chromedriver.chromium.org/download"
+# ou usar: https://googlechromelabs.github.io/chrome-for-testing/
+
+# Opção fácil: usar apt
+sudo apt-get install -y chromium-chromedriver
+
+# Verificar
+which chromedriver
+chromedriver --version
+
+SSH_EOF
 ```
 
-### Opção C: Usar deploy-server.sh (já criado)
+### 3️⃣ Testar SOMA após Chrome instalado
 ```bash
-bash deploy-server.sh
+# Rodar manualmente
+ssh -i chave.key ubuntu@132.145.57.133 'cd ~/soma-automation/SOMA && .venv/bin/python main.py'
+
+# Ou via PM2
+ssh -i chave.key ubuntu@132.145.57.133 'pm2 restart soma-automation'
 ```
 
 ---
