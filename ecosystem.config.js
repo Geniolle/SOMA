@@ -1,0 +1,37 @@
+module.exports = {
+  apps: [
+    {
+      name: "soma-automation",
+      script: "main.py",
+      interpreter: ".venv/bin/python",
+      cwd: "/home/ubuntu/soma-automation/SOMA",
+      instances: 1,
+      exec_mode: "fork",
+      env: {
+        RUN_ENV: "production",
+        LOG_LEVEL: "INFO",
+        CONSOLE_LOG_LEVEL: "ERROR",
+        HEADLESS: "false",
+      },
+      log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+      error_file: "logs/soma-error.log",
+      out_file: "logs/soma-out.log",
+      merge_logs: true,
+      max_size: "100M",
+      max_file: 14,
+      autorestart: true,
+      watch: false,
+      ignore_watch: [
+        "logs",
+        "artifacts",
+        ".venv",
+        "node_modules",
+        ".git",
+        "__pycache__",
+      ],
+      min_uptime: "30s",
+      max_restarts: 5,
+      restart_delay: 5000,
+    },
+  ],
+};
