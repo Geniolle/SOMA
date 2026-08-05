@@ -101,9 +101,10 @@ class EntradasSaidasPage:
         (By.XPATH, "//a[contains(., 'Inserir Pagamento')]"),
         (By.XPATH, "//table//button[contains(@title,'Inserir') or contains(.,'Inserir')]"),
     ]
-    DATA_BAIXA = (By.XPATH, "")
+    DATA_BAIXA = (By.XPATH, "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[1]/div[1]/div/input")
+    FORMA_PAGAMENTO_MODAL = (By.XPATH, "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]/div[1]/div/select")
     POPUP_CLICK_CANDIDATES = []
-    BTN_SALVAR_BAIXA = (By.XPATH, "")
+    BTN_SALVAR_BAIXA = (By.XPATH, "/html/body/div[2]/div/div[5]/div/div/form/div[3]/button")
 
     # =========
     # PESQUISA DOC SOMA

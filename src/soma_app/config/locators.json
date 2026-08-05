@@ -104,12 +104,13 @@
       "//a[contains(., 'Inserir Pagamento')]",
       "//table//button[contains(@title,'Inserir') or contains(.,'Inserir')]"
     ],
-    "DATA_BAIXA": "/html/body/div[2]/div/div[4]/div/div/form/div[2]/div/div/div[1]/div/div/input",
+    "DATA_BAIXA": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[1]/div[1]/div/input",
+    "FORMA_PAGAMENTO_MODAL": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]/div[1]/div/select",
     "POPUP_CLICK_CANDIDATES": [
-      "/html/body/div[2]/div/div[4]/div/div/form/div[2]/div/div/div[2]",
-      "/html/body/div[2]/div/div[4]/div/div/form/div[3]"
+      "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]",
+      "/html/body/div[2]/div/div[5]/div/div/form/div[3]"
     ],
-    "BTN_SALVAR_BAIXA": "/html/body/div[2]/div/div[4]/div/div/form/div[3]/button",
+    "BTN_SALVAR_BAIXA": "/html/body/div[2]/div/div[5]/div/div/form/div[3]/button",
     "PESQ_DESCRICAO": "/html/body/div[2]/div/div[3]/div/div/form/div[3]/div/input",
     "RADIO_PERIODO": "/html/body/div[2]/div/div[3]/div/div/form/div[7]/div/div/input",
     "RADIO_DATA_PAGAMENTO": "/html/body/div[2]/div/div[3]/div/div/form/div[8]/div/div[2]/input",
