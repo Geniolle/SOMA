@@ -32,12 +32,29 @@ class FakeTransferencias:
         return self.doc_id
 
 
+_UNSET = object()
+
+
 class FakeEntradasSaidas:
-    def __init__(self, *, doc_id: str = "DOC-E1", dados_doc: str = ""):
+    def __init__(
+        self,
+        *,
+        doc_id: str = "DOC-E1",
+        dados_doc: str = "",
+        duplicate_doc: str | None = None,
+        recover_doc: Any = _UNSET,
+    ):
         self.doc_id = doc_id
         self.dados_doc = dados_doc
+        self.duplicate_doc = duplicate_doc
+        self.recover_doc = doc_id if recover_doc is _UNSET else recover_doc
         self.create_calls: list[Any] = []
         self.recover_calls: list[Any] = []
+        self.precheck_calls: list[Any] = []
+
+    def precheck_duplicate(self, row):
+        self.precheck_calls.append(row)
+        return self.duplicate_doc
 
     def create_and_get_doc_id(self, row):
         self.create_calls.append(row)
@@ -45,7 +62,7 @@ class FakeEntradasSaidas:
 
     def recover_doc_id(self, row):
         self.recover_calls.append(row)
-        return self.doc_id
+        return self.recover_doc
 
     def fetch_dados_doc(self, doc_id):
         return self.dados_doc
@@ -54,6 +71,9 @@ class FakeEntradasSaidas:
 class FailingEntradasSaidas:
     def __init__(self, exc: Exception):
         self.exc = exc
+
+    def precheck_duplicate(self, row):
+        raise self.exc
 
     def create_and_get_doc_id(self, row):
         raise self.exc
@@ -66,16 +86,19 @@ class FailingEntradasSaidas:
 
 
 def _search_doc_id(exc: Exception):
-    # Nome da função importa: _is_pending_doc_exception detecta pelo nome do frame.
+    # Nome da funcao importa: _is_pending_doc_exception detecta pelo nome do frame.
     raise exc
 
 
 class PendingDocEntradasSaidas:
+    def precheck_duplicate(self, row):
+        return None
+
     def create_and_get_doc_id(self, row):
-        _search_doc_id(RuntimeError("doc não encontrado"))
+        _search_doc_id(RuntimeError("doc nao encontrado"))
 
     def recover_doc_id(self, row):
-        _search_doc_id(RuntimeError("doc não encontrado"))
+        _search_doc_id(RuntimeError("doc nao encontrado"))
 
     def fetch_dados_doc(self, doc_id):
         return ""
@@ -112,7 +135,7 @@ def _call(table, raw_row, *, entradas_saidas, transferencias, allow_retry=False)
 def test_process_row_transferencia_marks_ok():
     table, fake = _build_table()
     transferencias = FakeTransferencias(doc_id="DOC-T1")
-    raw_row = {"row": 2, "TIPO": "Transferência", "DOC. SOMA": "", "STATUS": ""}
+    raw_row = {"row": 2, "TIPO": "Transferencia", "DOC. SOMA": "", "STATUS": ""}
 
     outcome = _call(table, raw_row, entradas_saidas=FakeEntradasSaidas(), transferencias=transferencias)
 
@@ -139,12 +162,32 @@ def test_process_row_creates_doc_for_new_entrada():
     assert outcome.recovered is False
     assert len(entradas_saidas.create_calls) == 1
     assert len(entradas_saidas.recover_calls) == 0
+    assert len(entradas_saidas.precheck_calls) == 1
 
     written = _written(fake, 2)
     assert written[table.col_idx("DOC. SOMA")] == "DOC-E1"
 
 
-def test_process_row_recovers_doc_for_pending_doc_status():
+def test_process_row_marks_duplicate_without_creating_doc():
+    table, fake = _build_table()
+    entradas_saidas = FakeEntradasSaidas(duplicate_doc="123456")
+    raw_row = {"row": 2, "TIPO": "Entrada", "DOC. SOMA": "", "STATUS": ""}
+
+    outcome = _call(table, raw_row, entradas_saidas=entradas_saidas, transferencias=FakeTransferencias())
+
+    assert outcome.ok is True
+    assert outcome.duplicated is True
+    assert outcome.created is False
+    assert outcome.recovered is False
+    assert len(entradas_saidas.precheck_calls) == 1
+    assert len(entradas_saidas.create_calls) == 0
+
+    written = _written(fake, 2)
+    assert written[table.col_idx("DOC. SOMA")] == "DUPLICADO"
+    assert written[table.col_idx("STATUS")] == "DUPLICADO"
+
+
+def test_process_row_pending_doc_still_creates_when_not_duplicate():
     table, fake = _build_table()
     entradas_saidas = FakeEntradasSaidas(doc_id="DOC-R1")
     raw_row = {"row": 2, "TIPO": "Entrada", "DOC. SOMA": "EM ERRO", "STATUS": "PENDENTE_DOC"}
@@ -152,10 +195,15 @@ def test_process_row_recovers_doc_for_pending_doc_status():
     outcome = _call(table, raw_row, entradas_saidas=entradas_saidas, transferencias=FakeTransferencias())
 
     assert outcome.ok is True
-    assert outcome.recovered is True
-    assert outcome.created is False
-    assert len(entradas_saidas.recover_calls) == 1
-    assert len(entradas_saidas.create_calls) == 0
+    assert outcome.created is True
+    assert outcome.recovered is False
+    assert len(entradas_saidas.recover_calls) == 0
+    assert len(entradas_saidas.create_calls) == 1
+    assert len(entradas_saidas.precheck_calls) == 1
+
+    written = _written(fake, 2)
+    assert written[table.col_idx("DOC. SOMA")] == "DOC-R1"
+    assert written[table.col_idx("STATUS")] == "VALIDADO"
 
 
 def test_process_row_pending_doc_exception_forces_pendente_doc_status():
@@ -174,7 +222,7 @@ def test_process_row_pending_doc_exception_forces_pendente_doc_status():
 
 def test_process_row_generic_exception_marks_em_erro_when_no_retry():
     table, fake = _build_table()
-    entradas_saidas = FailingEntradasSaidas(RuntimeError("falha genérica"))
+    entradas_saidas = FailingEntradasSaidas(RuntimeError("falha generica"))
     raw_row = {"row": 2, "TIPO": "Entrada", "DOC. SOMA": "", "STATUS": ""}
 
     outcome = _call(
@@ -189,7 +237,7 @@ def test_process_row_generic_exception_marks_em_erro_when_no_retry():
 
 def test_process_row_generic_exception_clears_doc_when_allow_retry():
     table, fake = _build_table()
-    entradas_saidas = FailingEntradasSaidas(RuntimeError("falha genérica"))
+    entradas_saidas = FailingEntradasSaidas(RuntimeError("falha generica"))
     raw_row = {"row": 2, "TIPO": "Entrada", "DOC. SOMA": "", "STATUS": ""}
 
     outcome = _call(

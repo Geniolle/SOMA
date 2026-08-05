@@ -20,14 +20,19 @@ from soma_app.infra.env import env_bool, env_str
 from soma_app.infra.log_config import configure_logging, ensure_artifacts_dirs
 from soma_app.infra.sheets_client import SheetsClient
 from soma_app.infra.soma_api_client import SomaApiClient
-from soma_app.infra.trace import new_run_id, step
+from soma_app.infra.trace import log_kv, new_run_id, step
 from soma_app.infra.webdriver_factory import (
     WebDriverFactory,
     get_chrome_version,
     get_chromedriver_info,
     unwrap_webdriver,
 )
-from soma_app.workflows.contaordem_writer import mark_row_error, mark_row_ok, unlock_still_processing
+from soma_app.workflows.contaordem_writer import (
+    mark_row_duplicate,
+    mark_row_error,
+    mark_row_ok,
+    unlock_still_processing,
+)
 from soma_app.workflows.process_caixas_bancos import atualizar_caixas_bancos
 from soma_app.workflows.process_contaordem import (
     STATUS_COL_DEFAULT,
@@ -200,6 +205,7 @@ class RunTotals:
     err: int = 0
     created: int = 0
     recovered: int = 0
+    duplicated: int = 0
     transfer: int = 0
     row_times_ms: list[int] = field(default_factory=list)
 
@@ -210,6 +216,7 @@ class RowOutcome:
     elapsed_ms: int
     created: bool = False
     recovered: bool = False
+    duplicated: bool = False
     transfer: bool = False
 
 
@@ -347,7 +354,6 @@ def _process_row(
 ) -> RowOutcome:
     row_idx = int(raw_row["row"])
     tipo_txt = str(raw_row.get("TIPO") or raw_row.get("tipo") or "").strip() or "-"
-    is_recover = _should_recover_doc(raw_row)
 
     os.environ["ROW_NUMBER"] = str(row_idx)
     row_t0 = time.perf_counter()
@@ -371,10 +377,21 @@ def _process_row(
                 mark_row_ok(table, row_idx, str(doc_id), iduser, elapsed_ms=elapsed_ms)
                 return RowOutcome(ok=True, elapsed_ms=elapsed_ms, transfer=True)
 
-            if is_recover:
-                doc_id = entradas_saidas.recover_doc_id(row_model)
-            else:
-                doc_id = entradas_saidas.create_and_get_doc_id(row_model)
+            duplicate_doc = entradas_saidas.precheck_duplicate(row_model)
+            if duplicate_doc:
+                elapsed_ms = int((time.perf_counter() - row_t0) * 1000)
+                mark_row_duplicate(table, row_idx, iduser, elapsed_ms=elapsed_ms)
+                log_kv(
+                    logger,
+                    "Documento já existente. Lançamento será pulado.",
+                    level=logging.INFO,
+                    row=row_idx,
+                    tipo=tipo_txt,
+                    doc=duplicate_doc,
+                )
+                return RowOutcome(ok=True, elapsed_ms=elapsed_ms, duplicated=True)
+
+            doc_id = entradas_saidas.create_and_get_doc_id(row_model)
 
             dados_doc = None
             try:
@@ -391,7 +408,12 @@ def _process_row(
                 dados_doc=dados_doc,
                 elapsed_ms=elapsed_ms,
             )
-            return RowOutcome(ok=True, elapsed_ms=elapsed_ms, created=not is_recover, recovered=is_recover)
+            return RowOutcome(
+                ok=True,
+                elapsed_ms=elapsed_ms,
+                created=True,
+                recovered=False,
+            )
 
     except Exception as e:
         # Fora do `with step(...)`: deixa o step ver a exceção e emitir
@@ -483,6 +505,8 @@ def _run_batches(
                     totals.ok += 1
                     if outcome.transfer:
                         totals.transfer += 1
+                    elif outcome.duplicated:
+                        totals.duplicated += 1
                     elif outcome.recovered:
                         totals.recovered += 1
                     else:
@@ -534,6 +558,7 @@ def _build_summary(
         f"erro: {totals.err}\n"
         f"criadas: {totals.created}\n"
         f"recuperadas: {totals.recovered}\n"
+        f"duplicadas: {totals.duplicated}\n"
         f"transferencias: {totals.transfer}\n"
         f"tempo_total: {total_elapsed_ms/1000.0:.2f}s ({total_elapsed_ms}ms)\n"
         f"tempo_medio_linha: {avg_ms/1000.0:.2f}s ({avg_ms}ms)\n"

@@ -29,6 +29,8 @@ Locator = Tuple[str, str]
 class ActionConfig:
     timeout_seconds: int = 20
     screenshots_dir: Path = Path("artifacts/screenshots")
+    selector_debug_interactive: bool = False
+    selector_debug_log_dir: Path = Path("logs")
 
 
 class Actions:
@@ -36,6 +38,44 @@ class Actions:
         self.driver = driver
         self.cfg = cfg
         self.cfg.screenshots_dir.mkdir(parents=True, exist_ok=True)
+        self._selector_debug = bool(cfg.selector_debug_interactive)
+        self._selector_debug_file = None
+        if self._selector_debug:
+            from datetime import datetime
+
+            cfg.selector_debug_log_dir.mkdir(parents=True, exist_ok=True)
+            stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            self._selector_debug_file = (cfg.selector_debug_log_dir / f"soma_selectors_{stamp}.log").open(
+                "a", encoding="utf-8", buffering=1
+            )
+            self._selector_debug_write("START | modo interativo de seletores ativo")
+
+    @staticmethod
+    def _locator_kind(by: str) -> str:
+        return {
+            "xpath": "xpath",
+            "css selector": "css selector",
+            "class name": "class name",
+            "tag name": "tag name",
+            "id": "id",
+            "name": "name",
+            "link text": "link text",
+            "partial link text": "partial link text",
+        }.get(str(by).lower(), str(by))
+
+    def _selector_debug_write(self, message: str) -> None:
+        if self._selector_debug_file is None:
+            return
+        line = f"{time.strftime('%Y-%m-%d %H:%M:%S')} | {message}"
+        print(f"[SELECTOR] {message}")
+        self._selector_debug_file.write(line + "\n")
+
+    def _selector_debug_pause(self, action: str, locator: Locator, detail: str = "") -> None:
+        if not self._selector_debug:
+            return
+        kind = self._locator_kind(locator[0])
+        suffix = f" | {detail}" if detail else ""
+        self._selector_debug_write(f"action={action} | method={kind} | selector={locator[1]}{suffix}")
 
     def _wait(self, timeout_seconds: Optional[int] = None) -> WebDriverWait:
         return WebDriverWait(self.driver, timeout_seconds or self.cfg.timeout_seconds)
@@ -173,6 +213,7 @@ class Actions:
             el.click()
         except ElementClickInterceptedException:
             self.driver.execute_script("arguments[0].click();", el)
+        self._selector_debug_pause("click", locator)
 
     def click_js(self, locator: Locator) -> None:
         if log.isEnabledFor(logging.DEBUG):
@@ -182,6 +223,7 @@ class Actions:
             self.driver.execute_script("arguments[0].click();", el)
         except Exception:
             el.click()
+        self._selector_debug_pause("click_js", locator)
 
     def type(self, locator: Locator, text: str, clear: bool = True) -> None:
         if log.isEnabledFor(logging.DEBUG):
@@ -196,18 +238,21 @@ class Actions:
         if clear:
             el.clear()
         el.send_keys(text)
+        self._selector_debug_pause("type", locator, f"clear={clear} | value_length={len(str(text or ''))}")
 
     def press_enter(self, locator: Locator) -> None:
         if log.isEnabledFor(logging.DEBUG):
             log.debug("[ACTION] press_enter | by=%s sel=%s", locator[0], locator[1])
         el = self.wait_visible(locator)
         el.send_keys(Keys.ENTER)
+        self._selector_debug_pause("press_enter", locator)
 
     def select_by_text(self, locator: Locator, text: str) -> None:
         if log.isEnabledFor(logging.DEBUG):
             log.debug("[ACTION] select_by_text | by=%s sel=%s | text=%s", locator[0], locator[1], str(text)[:60])
         el = self.wait_visible(locator)
         Select(el).select_by_visible_text(text)
+        self._selector_debug_pause("select_by_text", locator, f"value_length={len(str(text or ''))}")
 
     def wait_invisible(self, locator: Locator, timeout_seconds: Optional[int] = None) -> None:
         self._wait(timeout_seconds).until(EC.invisibility_of_element_located(locator))
@@ -258,6 +303,7 @@ class Actions:
                 inp.clear()
                 inp.send_keys(value)
                 inp.send_keys(Keys.ENTER)
+                self._selector_debug_pause("select2_search", loc, f"opener={opener[0]}:{opener[1]} | value_length={len(str(value or ''))}")
                 return
 
         # sem pesquisa: clicar opção
@@ -291,3 +337,4 @@ class Actions:
             self.driver.execute_script("arguments[0].click();", best)
         except Exception:
             best.click()
+        self._selector_debug_pause("select2_option", css_options, f"opener={opener[0]}:{opener[1]} | value_length={len(str(value or ''))}")

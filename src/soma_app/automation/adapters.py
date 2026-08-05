@@ -51,7 +51,7 @@ class EntradasSaidasAdapter:
             logger.warning("API falhou (create Entradas/Saídas). Vou tentar Selenium. err=%s", _safe_err(e))
             return self.fallback.create_and_get_doc_id(row)
 
-    def recover_doc_id(self, row: ContaOrdemRow) -> str:
+    def recover_doc_id(self, row: ContaOrdemRow) -> str | None:
         if (not self._api_enabled) and self.fallback is not None:
             return self.fallback.recover_doc_id(row)
         try:
@@ -62,6 +62,18 @@ class EntradasSaidasAdapter:
                 raise
             logger.warning("API falhou (recover DOC). Vou tentar Selenium. err=%s", _safe_err(e))
             return self.fallback.recover_doc_id(row)
+
+    def precheck_duplicate(self, row: ContaOrdemRow) -> str | None:
+        if (not self._api_enabled) and self.fallback is not None:
+            return self.fallback.precheck_duplicate(row)
+        try:
+            return self.primary.precheck_duplicate(row)
+        except Exception as e:
+            self._disable_api_if_needed(e, op="precheck_duplicate")
+            if self.fallback is None:
+                raise
+            logger.warning("API falhou (precheck duplicate). Vou tentar Selenium. err=%s", _safe_err(e))
+            return self.fallback.precheck_duplicate(row)
 
     def fetch_dados_doc(self, doc_id: str) -> str:
         if (not self._api_enabled) and self.fallback is not None and hasattr(self.fallback, "fetch_dados_doc"):

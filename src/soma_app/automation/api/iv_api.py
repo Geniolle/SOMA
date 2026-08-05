@@ -79,6 +79,28 @@ class EntradasSaidasApi:
     def __init__(self, api: SomaApiClient):
         self.api = api
 
+    def _search_existing_doc_id(self, row: ContaOrdemRow) -> Optional[str]:
+        kind = "saida" if row.tipo == TipoMovimento.SAIDA else "entrada"
+
+        params = {
+            "kind": kind,
+            "pesquisa": _as_str(getattr(row, "descricao_soma", "")),
+            "filtro": "descricao",
+            "use_period": True,
+            "start_date": _as_str(getattr(row, "data_mov", "")),
+            "end_date": _as_str(getattr(row, "data_mov", "")),
+            "limit": 5,
+            "offset": 0,
+        }
+
+        data = self.api.get_json("/v1/ivv/entradas-saidas", params=params)
+        for it in _iter_items(data):
+            doc = _extract_doc_id(it)
+            if doc:
+                return doc
+
+        return None
+
     def create_and_get_doc_id(self, row: ContaOrdemRow) -> str:
         kind = "saida" if row.tipo == TipoMovimento.SAIDA else "entrada"
         key = _idempotency(f"entradas-saidas:{kind}", int(getattr(row, "row_number", 0) or 0))
@@ -104,27 +126,11 @@ class EntradasSaidasApi:
             raise RuntimeError(f"API: não consegui extrair DOC do create entradas-saidas. retorno={str(data)[:400]}")
         return doc
 
-    def recover_doc_id(self, row: ContaOrdemRow) -> str:
-        kind = "saida" if row.tipo == TipoMovimento.SAIDA else "entrada"
+    def recover_doc_id(self, row: ContaOrdemRow) -> Optional[str]:
+        return self._search_existing_doc_id(row)
 
-        params = {
-            "kind": kind,
-            "pesquisa": _as_str(getattr(row, "descricao_soma", "")),
-            "filtro": "descricao",
-            "use_period": True,
-            "start_date": _as_str(getattr(row, "data_mov", "")),
-            "end_date": _as_str(getattr(row, "data_mov", "")),
-            "limit": 5,
-            "offset": 0,
-        }
-
-        data = self.api.get_json("/v1/ivv/entradas-saidas", params=params)
-        for it in _iter_items(data):
-            doc = _extract_doc_id(it)
-            if doc:
-                return doc
-
-        raise RuntimeError("API: recover_doc_id não encontrou resultado na listagem (pesquisa + período).")
+    def precheck_duplicate(self, row: ContaOrdemRow) -> Optional[str]:
+        return self._search_existing_doc_id(row)
 
     def fetch_dados_doc(self, doc_id: str) -> str:
         doc_id = (doc_id or "").strip()

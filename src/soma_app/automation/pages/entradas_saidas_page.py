@@ -541,6 +541,24 @@ class EntradasSaidasPage:
     # -----------------------
     # preenchimento
     # -----------------------
+    def _fill_saida_plano_conta(self, row: ContaOrdemRow) -> None:
+        with step(log, "entradas_saidas.fill.saida.plano_conta", row=row.row_number, tipo=row.tipo.value, field="PLANO_CONTA"):
+            time.sleep(1.5)
+            try:
+                self._select2_choose_candidates(
+                    self.PLANO_CONTA_CANDIDATES,
+                    row.plano_conta,
+                    row=row,
+                    field="plano_conta_saida",
+                    wait_seconds=25,
+                )
+            except Exception as e:
+                p = self.a.screenshot(f"entradas_saidas_plano_conta_saida_fail_row_{row.row_number}")
+                log_kv(log, "Falha ao preencher plano de conta para Saída", level=logging.ERROR,
+                       row=row.row_number, erro=str(e), screenshot=p)
+                raise
+            self._emit(f"Plano de conta preenchido com sucesso (Saída): {row.plano_conta}", row=row.row_number, tipo=row.tipo.value)
+
     def _fill_common(self, row: ContaOrdemRow) -> None:
         with step(log, "entradas_saidas.fill.plano_conta", row=row.row_number, tipo=row.tipo.value, field="PLANO_CONTA"):
             self._select2_choose_candidates(
@@ -781,6 +799,23 @@ class EntradasSaidasPage:
             return
         self.a.click_js(locator)
 
+    @staticmethod
+    def _is_no_results_text(text: str) -> bool:
+        n = unicodedata.normalize("NFKD", (text or ""))
+        n = "".join(ch for ch in n if not unicodedata.combining(ch))
+        n = " ".join(n.lower().split())
+        if not n:
+            return False
+        markers = (
+            "nenhum registo encontrado",
+            "nenhum registro encontrado",
+            "sem resultados",
+            "no matching records",
+            "no data available",
+            "nothing found",
+        )
+        return any(marker in n for marker in markers)
+
     def _go_back_to_list_best_effort(self, row: ContaOrdemRow) -> None:
         with step(log, "entradas_saidas.back_to_list_best_effort", row=row.row_number, tipo=row.tipo.value):
             self._dismiss_overlays()
@@ -794,7 +829,7 @@ class EntradasSaidasPage:
                 pass
             self._ensure_pesquisa_visivel(row)
 
-    def _search_doc_id_attempt(self, row: ContaOrdemRow) -> str:
+    def _search_doc_lookup_attempt(self, row: ContaOrdemRow) -> str | None:
         self._go_back_to_list_best_effort(row)
 
         self.a.type(self.PESQ_DESCRICAO, row.descricao_soma)
@@ -823,47 +858,55 @@ class EntradasSaidasPage:
         self.a.click_js(self.BTN_PESQUISAR)
         self._emit("Botão 'Pesquisar' clicado com sucesso!", row=row.row_number, tipo=row.tipo.value)
 
+        if self._exists_any(self.NO_RESULTS_CANDIDATES, timeout_seconds=2):
+            return None
+
         try:
             doc = self.a.wait_visible(self.RESULT_DOC, timeout_seconds=30).text.strip()
         except TimeoutException as e:
             if self._exists_any(self.NO_RESULTS_CANDIDATES, timeout_seconds=2):
-                raise RuntimeError(
-                    f"Sem resultados na pesquisa do nº SOMA. desc='{self._safe(row.descricao_soma)}' data='{self._safe(row.data_mov)}'"
-                ) from e
+                return None
             raise TimeoutException(
                 f"Timeout à espera do RESULT_DOC. desc='{self._safe(row.descricao_soma)}' data='{self._safe(row.data_mov)}'"
             ) from e
 
-        if not doc:
+        if not doc or self._is_no_results_text(doc):
+            if self._exists_any(self.NO_RESULTS_CANDIDATES, timeout_seconds=2) or self._is_no_results_text(doc):
+                return None
             raise RuntimeError("Doc ID vazio após pesquisa.")
 
         self._emit(f"Número do documento extraído: {doc}", row=row.row_number, tipo=row.tipo.value)
         return doc
 
+    def _search_doc_id_attempt(self, row: ContaOrdemRow) -> str:
+        doc = self._search_doc_lookup_attempt(row)
+        if doc is None:
+            raise RuntimeError(
+                f"Sem resultados na pesquisa do nº SOMA. desc='{self._safe(row.descricao_soma)}' data='{self._safe(row.data_mov)}'"
+            )
+        return doc
+
     def _search_doc_id(self, row: ContaOrdemRow) -> str:
         with step(log, "entradas_saidas.search_doc", row=row.row_number, tipo=row.tipo.value, data=row.data_mov):
-            # A grelha (DataTables) pode não ter indexado o registo recém-criado
-            # a tempo da primeira pesquisa; tenta novamente com backoff antes de
-            # desistir para evitar falsos "sem resultados" por lag de indexação.
-            attempts = 3
-            delays = (3, 6)
-            last_exc: Exception | None = None
-            for attempt in range(1, attempts + 1):
-                try:
-                    return self._search_doc_id_attempt(row)
-                except RuntimeError as e:
-                    last_exc = e
-                    if "Sem resultados" not in str(e) or attempt == attempts:
-                        raise
-                    delay = delays[min(attempt - 1, len(delays) - 1)]
-                    self._emit(
-                        f"Pesquisa sem resultados (tentativa {attempt}/{attempts}), retry em {delay}s",
-                        row=row.row_number,
-                        tipo=row.tipo.value,
-                    )
-                    time.sleep(delay)
-            assert last_exc is not None
-            raise last_exc
+            return self._search_doc_id_attempt(row)
+
+    def precheck_duplicate(self, row: ContaOrdemRow) -> str | None:
+        with step(log, "entradas_saidas.precheck_duplicate", row=row.row_number, tipo=row.tipo.value, data=row.data_mov):
+            doc = self._search_doc_lookup_attempt(row)
+            if doc is None:
+                self._emit(
+                    "Nenhum registro encontrado. Pode seguir com o lançamento.",
+                    row=row.row_number,
+                    tipo=row.tipo.value,
+                )
+                return None
+
+            self._emit(
+                f"Documento já existe. Lançamento será pulado. doc='{doc}'",
+                row=row.row_number,
+                tipo=row.tipo.value,
+            )
+            return doc
 
     def fetch_dados_doc(self, doc_id: str) -> str:
         url = f"{self.base_ivv}?mod=ivv&exec=entradas_saidas_dados&ID={doc_id}"
@@ -877,8 +920,8 @@ class EntradasSaidasPage:
             self._emit(f"Número do documento extraído: {txt}")
             return txt
 
-    def recover_doc_id(self, row: ContaOrdemRow) -> str:
-        return self._search_doc_id(row)
+    def recover_doc_id(self, row: ContaOrdemRow) -> str | None:
+        return self._search_doc_lookup_attempt(row)
 
     def create_and_get_doc_id(self, row: ContaOrdemRow) -> str:
         with step(log, "entradas_saidas.create_start", row=row.row_number, tipo=row.tipo.value):
@@ -896,10 +939,12 @@ class EntradasSaidasPage:
             self._save_form_if_present(row)
 
             if row.tipo == TipoMovimento.SAIDA:
-                self._realizar_pagamento(row)
-                self._pagamento_saida_modal(row)
-                if (row.forma_pagamento or "").strip().upper() == "TRANSFERÊNCIA BANCÁRIA":
-                    self._do_baixa(row)
+                if self.a.exists(self.BTN_REALIZAR_PAGAMENTO, timeout_seconds=2):
+                    self._realizar_pagamento(row)
+                    if (row.forma_pagamento or "").strip().upper() == "TRANSFERÊNCIA BANCÁRIA":
+                        self._do_baixa(row)
+                    else:
+                        self._pagamento_saida_modal(row)
             else:
                 if (row.forma_pagamento or "").strip().upper() == "TRANSFERÊNCIA BANCÁRIA":
                     self._realizar_pagamento(row)

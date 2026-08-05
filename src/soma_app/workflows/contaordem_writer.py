@@ -46,6 +46,27 @@ def mark_row_ok(
     t.batch_update_cells(updates)
 
 
+def mark_row_duplicate(
+    t: SheetsTable,
+    row_idx: int,
+    iduser: str,
+    *,
+    elapsed_ms: int | None = None,
+) -> None:
+    updates = [
+        (row_idx, DOC_COL_DEFAULT, "DUPLICADO"),
+        (row_idx, "IDUSER", iduser),
+        (row_idx, "TIMESTAMP", _now_pt()),
+    ]
+    if t.has_col(STATUS_COL_DEFAULT):
+        updates.append((row_idx, STATUS_COL_DEFAULT, "DUPLICADO"))
+    if elapsed_ms is not None:
+        c = _time_col_name(t)
+        if c:
+            updates.append((row_idx, c, elapsed_ms))
+    t.batch_update_cells(updates)
+
+
 def mark_row_error(
     t: SheetsTable,
     row_idx: int,

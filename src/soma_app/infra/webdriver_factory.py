@@ -142,7 +142,12 @@ def _create_actions(driver: webdriver.Chrome) -> Any:
         from soma_app.automation.actions import ActionConfig, Actions  # type: ignore
 
         # Actions agora exige cfg: ActionConfig
-        return Actions(driver, ActionConfig())
+        return Actions(
+            driver,
+            ActionConfig(
+                selector_debug_interactive=env_bool("DEBUG_SELECTOR_INTERACTIVE", default=False),
+            ),
+        )
     except Exception as e:
         # Mantém comportamento "best effort" (não quebra create_bundle),
         # mas deixa rasto para diagnóstico.

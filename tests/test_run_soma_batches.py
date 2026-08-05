@@ -29,7 +29,12 @@ class FakeSheetsClient:
 class FakeEntradasSaidas:
     def __init__(self, doc_id: str = "DOC-1"):
         self.doc_id = doc_id
+        self.precheck_calls: list = []
         self.created: list = []
+
+    def precheck_duplicate(self, row):
+        self.precheck_calls.append(row)
+        return None
 
     def create_and_get_doc_id(self, row):
         self.created.append(row)
@@ -80,6 +85,7 @@ def test_run_batches_processes_workset_once_and_stops_via_attempted_rows(monkeyp
     assert totals.created == 1
     assert totals.err == 0
     assert len(totals.row_times_ms) == 1
+    assert len(entradas_saidas.precheck_calls) == 1
     assert len(entradas_saidas.created) == 1
 
 

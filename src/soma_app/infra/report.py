@@ -184,6 +184,14 @@ def on_step_start(step_name: str, fields: Dict[str, Any]) -> None:
         subsection("4.4", "Iniciando o processo pesquisa do nº soma do documento")
         return
 
+    if step_name == "entradas_saidas.precheck_duplicate":
+        subsection("4.4", "Iniciando o processo validação de duplicidade do documento")
+        return
+
+    if step_name == "entradas_saidas.search_doc":
+        subsection("4.5", "Iniciando o processo pesquisa do nº soma do documento")
+        return
+
     if "caixas" in step_name or "bancos" in step_name:
         section("6", "Iniciando o processo 'Caixas/bancos'")
         return

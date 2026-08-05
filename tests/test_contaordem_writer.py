@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from soma_app.workflows.contaordem_writer import mark_row_error, mark_row_ok, unlock_still_processing
+from soma_app.workflows.contaordem_writer import (
+    mark_row_duplicate,
+    mark_row_error,
+    mark_row_ok,
+    unlock_still_processing,
+)
 from soma_app.workflows.process_contaordem import SheetsTable
 
 
@@ -83,6 +88,21 @@ def test_mark_row_error_force_doc_and_status_override_allow_retry():
     written = _written(fake, 2)
     assert written[table.col_idx("DOC. SOMA")] == "EM ERRO"
     assert written[table.col_idx("STATUS")] == "PENDENTE_DOC"
+
+
+def test_mark_row_duplicate_sets_duplicate_doc_and_status():
+    table, fake = _build_table(
+        ["TIPO", "DOC. SOMA", "STATUS", "IDUSER", "TIMESTAMP"],
+        [{"TIPO": "Entrada", "DOC. SOMA": "", "STATUS": "", "IDUSER": "", "TIMESTAMP": ""}],
+    )
+
+    mark_row_duplicate(table, 2, "USERJOB")
+
+    written = _written(fake, 2)
+    assert written[table.col_idx("DOC. SOMA")] == "DUPLICADO"
+    assert written[table.col_idx("STATUS")] == "DUPLICADO"
+    assert written[table.col_idx("IDUSER")] == "USERJOB"
+    assert table.col_idx("TIMESTAMP") in written
 
 
 def test_unlock_still_processing_resets_locked_rows_only():
