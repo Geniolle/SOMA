@@ -92,7 +92,15 @@ class EntradasSaidasPage:
     NUM_DOCUMENTO_MODAL = (By.XPATH, "")
     BTN_SALVAR_PAGAMENTO_MODAL = (By.XPATH, "")
 
-    BTN_INSERIR_BAIXA = (By.XPATH, "")
+    BTN_INSERIR_BAIXA = (By.XPATH, "/html/body/div[2]/div/div[2]/div/div/form/div[29]/div/div[2]/a")
+    BTN_INSERIR_BAIXA_CANDIDATES = [
+        (By.XPATH, "//a[@class='btn btn-info btn-block bnt_inserir'][@data-target='#inserir']"),
+        (By.XPATH, "//a[contains(@class, 'bnt_inserir') and contains(., 'Inserir')]"),
+        (By.XPATH, "//a[@data-target='#inserir' and contains(., 'Inserir')]"),
+        (By.XPATH, "//div[@class='form-group  bnt_inserir']//a[@class='btn btn-info btn-block bnt_inserir']"),
+        (By.XPATH, "//a[contains(., 'Inserir Pagamento')]"),
+        (By.XPATH, "//table//button[contains(@title,'Inserir') or contains(.,'Inserir')]"),
+    ]
     DATA_BAIXA = (By.XPATH, "")
     POPUP_CLICK_CANDIDATES = []
     BTN_SALVAR_BAIXA = (By.XPATH, "")
@@ -560,6 +568,9 @@ class EntradasSaidasPage:
             self._emit(f"Plano de conta preenchido com sucesso (Saída): {row.plano_conta}", row=row.row_number, tipo=row.tipo.value)
 
     def _fill_common(self, row: ContaOrdemRow) -> None:
+        # Ativa debug interativo para preenchimento de dados
+        self.a.set_debug_context("input_dados")
+
         with step(log, "entradas_saidas.fill.plano_conta", row=row.row_number, tipo=row.tipo.value, field="PLANO_CONTA"):
             self._select2_choose_candidates(
                 self.PLANO_CONTA_CANDIDATES,
@@ -764,7 +775,16 @@ class EntradasSaidasPage:
     def _do_baixa(self, row: ContaOrdemRow) -> None:
         with step(log, "entradas_saidas.baixa", row=row.row_number, tipo=row.tipo.value, data=row.data_mov):
             self._dismiss_overlays()
-            self.a.click_js(self.BTN_INSERIR_BAIXA)
+            log.info("[PRE-BAIXA] Tentando clicar em BTN_INSERIR_BAIXA | candidates=%d | url=%s",
+                     len(self.BTN_INSERIR_BAIXA_CANDIDATES), self.a.driver.current_url)
+            try:
+                btn_low = self.a.wait_any_present(self.BTN_INSERIR_BAIXA_CANDIDATES, timeout_seconds=30)
+                log.info("[PRE-BAIXA] BTN_INSERIR_BAIXA encontrado usando: %s", btn_low)
+                self.a.click_js(btn_low)
+            except TimeoutException:
+                log.error("[PRE-BAIXA] Nenhum candidate de BTN_INSERIR_BAIXA encontrado. Candidates: %s",
+                         [str(loc) for loc in self.BTN_INSERIR_BAIXA_CANDIDATES])
+                raise
             time.sleep(1)
             self._emit("Inserir Baixa salvo com sucesso!", row=row.row_number, tipo=row.tipo.value)
 
@@ -935,6 +955,9 @@ class EntradasSaidasPage:
                 else:
                     self._fill_entrada_sem_caixa(row)
                     self._fill_caixa_entrada_ultima(row)
+
+            # Desativa debug interativo após preencher dados
+            self.a.set_debug_context(None)
 
             self._save_form_if_present(row)
 

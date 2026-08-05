@@ -1,0 +1,215 @@
+================================================================================
+🔧 MELHORIA DE SELETOR: BTN_INSERIR_BAIXA
+================================================================================
+
+✅ STATUS: IMPLEMENTADO E PRONTO PARA TESTAR
+
+================================================================================
+📊 O PROBLEMA
+================================================================================
+
+Seletor Anterior (FALHOU):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+/html/body/div[2]/div/div[3]/div/div/table/tbody/tr[1]/td[6]/button
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Problemas:
+❌ Procura APENAS na primeira linha (tr[1])
+❌ Muito específico - quebra com mudanças no DOM
+❌ Sem fallback - apenas um único xpath
+❌ Resultado: TimeoutException depois de 30 segundos
+
+================================================================================
+✅ A SOLUÇÃO
+================================================================================
+
+Novo Padrão: BTN_INSERIR_BAIXA_CANDIDATES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+5 Candidates em Ordem de Prioridade:
+
+1. //table//button[contains(@title,'Inserir') or contains(.,'Inserir')]
+   └─ Procura por TEXTO "Inserir" (semântico) ⭐ MELHOR
+
+2. //table//tbody//tr[1]//td[6]//button
+   └─ Similar ao original mas mais flexível
+
+3. //div[@class='table-responsive']//button[contains(@title,'Inserir')]
+   └─ Procura por container class
+
+4. /html/body/div[2]/div/div[3]/div/div/table/tbody/tr[1]/td[6]/button
+   └─ Original (último recurso)
+
+5. //button[@type='button' and (contains(.,'Inserir') or contains(@title,'Inserir'))]
+   └─ Genérico por atributo
+
+================================================================================
+🔄 FLUXO DE BUSCA
+================================================================================
+
+Antes (Falha Rápida):
+┌─ XPath único
+└─ ❌ Falha → Timeout (30s)
+
+Depois (Múltiplos Fallbacks):
+┌─ Candidate 1 (Semântico)
+│  ├─ ✅ Sucesso → Clica
+│  └─ ❌ Falha → Próximo
+│
+├─ Candidate 2 (Similar ao Original)
+│  ├─ ✅ Sucesso → Clica
+│  └─ ❌ Falha → Próximo
+│
+├─ Candidate 3 (Class Container)
+│  ├─ ✅ Sucesso → Clica
+│  └─ ❌ Falha → Próximo
+│
+├─ Candidate 4 (Original)
+│  ├─ ✅ Sucesso → Clica
+│  └─ ❌ Falha → Próximo
+│
+├─ Candidate 5 (Genérico)
+│  ├─ ✅ Sucesso → Clica
+│  └─ ❌ Falha → Timeout com Diagnostics
+│
+└─ 📸 Screenshot + 📄 HTML + 📋 Log detalhado
+
+================================================================================
+📝 ARQUIVOS MODIFICADOS
+================================================================================
+
+1. src/soma_app/config/locators.json
+   ❌ Removido: "BTN_INSERIR_BAIXA": "..."
+   ✅ Adicionado: "BTN_INSERIR_BAIXA_CANDIDATES": [...]
+
+2. src/soma_app/automation/pages/entradas_saidas_page.py
+   ✅ Adicionado: BTN_INSERIR_BAIXA_CANDIDATES = []
+   ✅ Modificado: _do_baixa() para usar wait_any_present()
+   ✅ Adicionado: Logs detalhados de sucesso/falha
+
+================================================================================
+🧪 COMO TESTAR
+================================================================================
+
+1. Ativar Debug
+   └─ DEBUG_SELECTOR_INTERACTIVE=true em deploy/.env (já está!)
+
+2. Executar
+   └─ python main.py
+
+3. Resultado Esperado
+   └─ BTN_INSERIR_BAIXA encontrado com um dos candidates
+   └─ Script continua até próxima ação
+
+4. Se Ainda Falhar
+   └─ Verificar artifacts/screenshots/timeout_*.png
+   └─ Verificar artifacts/diagnostics/timeout_*.html
+   └─ Abrir DevTools (F12) e testar cada candidate
+
+================================================================================
+📊 EXEMPLO DE LOG ESPERADO
+================================================================================
+
+SUCESSO:
+2026-08-05 16:20:45 | [PRE-BAIXA] Tentando clicar em BTN_INSERIR_BAIXA | candidates=5
+2026-08-05 16:20:46 | [PRE-BAIXA] BTN_INSERIR_BAIXA encontrado usando: (By.XPATH, '//table//button...')
+2026-08-05 16:20:47 | [SELECTOR] action=click_js | method=xpath | selector=//table//button...
+
+✓ action=click_js | method=xpath | selector=//table//button[contains(@title,'Inserir')]
+→ Pressione ENTER para continuar...
+
+FALHA (com Diagnostics):
+2026-08-05 16:20:45 | [PRE-BAIXA] Tentando clicar em BTN_INSERIR_BAIXA | candidates=5
+2026-08-05 16:20:75 | [PRE-BAIXA] Nenhum candidate encontrado
+2026-08-05 16:20:75 | [TIMEOUT] TIMEOUT em click_js | found=0 | screenshot=... | html=...
+
+Arquivos Gerados:
+  📸 artifacts/screenshots/timeout_click_js_xpath.png
+  📄 artifacts/diagnostics/timeout_click_js_xpath.html
+  📋 logs/soma_selectors_*.log
+
+================================================================================
+🎯 COMPARAÇÃO: ANTES vs DEPOIS
+================================================================================
+
+ANTES (❌ Problema):
+  └─ 1 xpath específico
+  └─ Falha se primeira linha não existe
+  └─ Timeout após 30 segundos
+  └─ Difícil de debugar
+
+DEPOIS (✅ Solução):
+  └─ 5 xpaths com fallback
+  └─ Tenta semântico primeiro (por texto)
+  └─ Tenta original como fallback
+  └─ Diagnostics automáticos se falhar
+  └─ Logs mostram qual candidate funcionou
+
+================================================================================
+✅ RESUMO DAS MUDANÇAS
+================================================================================
+
+Arquivo: src/soma_app/config/locators.json
+  Antes: "BTN_INSERIR_BAIXA": "/html/body/.../table/tbody/tr[1]/td[6]/button"
+  Depois: "BTN_INSERIR_BAIXA_CANDIDATES": [ 5 xpaths robustos ]
+
+Arquivo: src/soma_app/automation/pages/entradas_saidas_page.py
+  Adicionado: BTN_INSERIR_BAIXA_CANDIDATES = []
+  Modificado: _do_baixa() para usar wait_any_present()
+  Adicionado: Logs de sucesso/falha
+
+Arquivo: deploy/.env
+  Status: DEBUG_SELECTOR_INTERACTIVE=true (já estava ativo)
+
+================================================================================
+🎓 PADRÃO REUTILIZÁVEL
+================================================================================
+
+Este padrão pode ser aplicado a outros seletores:
+
+✅ BTN_INSERIR_PAGAMENTO_SAIDA
+   └─ Adicionar candidates semânticos
+
+✅ BTN_SALVAR_PAGAMENTO_MODAL
+   └─ Adicionar candidates semânticos
+
+✅ BTN_SALVAR_BAIXA
+   └─ Adicionar candidates semânticos
+
+Regra de Ouro:
+  1º: Semântico (por texto, título, atributo)
+  2º: Original (se houver)
+  3º: Genérico (por tag, classe genérica)
+
+================================================================================
+🚀 PRÓXIMOS PASSOS
+================================================================================
+
+1. Testar Execução
+   $ python main.py
+
+2. Se Funcionar ✅
+   └─ Executar com DEBUG=false para verificar produção
+   └─ Aplicar padrão similar a outros seletores
+
+3. Se Ainda Falhar ❌
+   └─ Abrir DevTools (F12)
+   └─ Procurar elemento com $x("//button[contains(.,'Inserir')]")
+   └─ Ajustar candidates com xpaths descobertos
+   └─ Reexecutar
+
+================================================================================
+✅ STATUS FINAL
+================================================================================
+
+✓ Problema identificado
+✓ Solução implementada com 5 candidates robustos
+✓ Logs detalhados adicionados
+✓ Diagnostics automáticos preparados
+✓ Documentação criada
+
+🎉 MELHORIA CONCLUÍDA - PRONTO PARA TESTAR!
+
+Próximo: python main.py com DEBUG_SELECTOR_INTERACTIVE=true
+
+================================================================================

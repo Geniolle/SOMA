@@ -40,6 +40,7 @@ class Actions:
         self.cfg.screenshots_dir.mkdir(parents=True, exist_ok=True)
         self._selector_debug = bool(cfg.selector_debug_interactive)
         self._selector_debug_file = None
+        self._debug_context = None  # Contexto para pausa seletiva
         if self._selector_debug:
             from datetime import datetime
 
@@ -70,12 +71,58 @@ class Actions:
         print(f"[SELECTOR] {message}")
         self._selector_debug_file.write(line + "\n")
 
+    def set_debug_context(self, context: str | None) -> None:
+        """Define contexto para pausa seletiva (input_dados, input_saida, etc)"""
+        self._debug_context = context
+        if context:
+            self._selector_debug_write(f"[CONTEXT] debug context ativado: {context}")
+
     def _selector_debug_pause(self, action: str, locator: Locator, detail: str = "") -> None:
         if not self._selector_debug:
             return
         kind = self._locator_kind(locator[0])
         suffix = f" | {detail}" if detail else ""
-        self._selector_debug_write(f"action={action} | method={kind} | selector={locator[1]}{suffix}")
+        message = f"action={action} | method={kind} | selector={locator[1]}{suffix}"
+        self._selector_debug_write(message)
+
+        # Pausa seletiva: só pausa se estiver em contexto de input de dados
+        should_pause = self._debug_context in ("input_dados", "input_saida", "input_entrada")
+
+        if should_pause:
+            try:
+                input(f"\n[OK] {message}\n[PAUSE] Pressione ENTER para continuar...\n")
+            except (EOFError, KeyboardInterrupt):
+                pass
+
+    def _handle_locator_timeout(self, action: str, locator: Locator) -> None:
+        kind = self._locator_kind(locator[0])
+        selector_str = locator[1]
+        msg = f"TIMEOUT em {action} | method={kind} | selector={selector_str}"
+
+        screenshot_path = self.screenshot(f"timeout_{action}_{kind}")
+        html_path = self.dump_page_source(f"timeout_{action}_{kind}")
+
+        element_count = 0
+        try:
+            elements = self.driver.find_elements(*locator)
+            element_count = len(elements)
+        except Exception:
+            element_count = -1
+
+        log.error(
+            "[TIMEOUT] %s | found=%d | screenshot=%s | html=%s | url=%s | title=%s",
+            msg,
+            element_count,
+            screenshot_path,
+            html_path,
+            self.driver.current_url,
+            self.driver.title,
+        )
+
+        if self._selector_debug_file:
+            self._selector_debug_write(
+                f"[TIMEOUT] {msg} | found={element_count} | screenshot={screenshot_path} | html={html_path}"
+            )
 
     def _wait(self, timeout_seconds: Optional[int] = None) -> WebDriverWait:
         return WebDriverWait(self.driver, timeout_seconds or self.cfg.timeout_seconds)
@@ -172,20 +219,33 @@ class Actions:
         log.warning("DOM não ficou 'complete' dentro de %ss", timeout_seconds)
 
     def wait_present(self, locator: Locator, timeout_seconds: Optional[int] = None) -> WebElement:
-        return self._wait(timeout_seconds).until(EC.presence_of_element_located(locator))
+        try:
+            return self._wait(timeout_seconds).until(EC.presence_of_element_located(locator))
+        except TimeoutException:
+            self._handle_locator_timeout("wait_present", locator)
+            raise
 
     def wait_visible(self, locator: Locator, timeout_seconds: Optional[int] = None) -> WebElement:
-        return self._wait(timeout_seconds).until(EC.visibility_of_element_located(locator))
+        try:
+            return self._wait(timeout_seconds).until(EC.visibility_of_element_located(locator))
+        except TimeoutException:
+            self._handle_locator_timeout("wait_visible", locator)
+            raise
 
     def wait_clickable(self, locator: Locator, timeout_seconds: Optional[int] = None) -> WebElement:
-        return self._wait(timeout_seconds).until(EC.element_to_be_clickable(locator))
+        try:
+            return self._wait(timeout_seconds).until(EC.element_to_be_clickable(locator))
+        except TimeoutException:
+            self._handle_locator_timeout("wait_clickable", locator)
+            raise
 
     def wait_any_present(self, locators: Iterable[Locator], timeout_seconds: Optional[int] = None) -> Locator:
         last_err: Optional[Exception] = None
+        locators_list = list(locators)
 
         def _probe(_driver):
             nonlocal last_err
-            for loc in locators:
+            for loc in locators_list:
                 try:
                     _driver.find_element(*loc)
                     return loc
@@ -196,7 +256,23 @@ class Actions:
         try:
             return self._wait(timeout_seconds).until(_probe)
         except TimeoutException:
-            raise TimeoutException(f"Timeout à espera de qualquer locator presente. last_err={last_err}")
+            screenshot_path = self.screenshot("wait_any_present_timeout")
+            html_path = self.dump_page_source("wait_any_present_timeout")
+            json_path = self.dump_locator_probe("wait_any_present_timeout", locators_list)
+
+            log.error(
+                "[TIMEOUT] wait_any_present com %d locators | last_err=%s | screenshot=%s | html=%s | json=%s",
+                len(locators_list),
+                last_err,
+                screenshot_path,
+                html_path,
+                json_path,
+            )
+
+            raise TimeoutException(
+                f"Timeout à espera de qualquer locator presente. last_err={last_err} | "
+                f"screenshot={screenshot_path} | html={html_path} | json={json_path}"
+            )
 
     def exists(self, locator: Locator, timeout_seconds: Optional[int] = None) -> bool:
         try:
@@ -218,7 +294,11 @@ class Actions:
     def click_js(self, locator: Locator) -> None:
         if log.isEnabledFor(logging.DEBUG):
             log.debug("[ACTION] click_js | by=%s sel=%s", locator[0], locator[1])
-        el = self.wait_present(locator, timeout_seconds=30)
+        try:
+            el = self.wait_present(locator, timeout_seconds=30)
+        except TimeoutException as e:
+            self._handle_locator_timeout("click_js", locator)
+            raise
         try:
             self.driver.execute_script("arguments[0].click();", el)
         except Exception:

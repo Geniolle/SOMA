@@ -96,7 +96,14 @@
     "CAIXA_PAGAMENTO_MODAL": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[4]/div[2]/div/select",
     "NUM_DOCUMENTO_MODAL": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]/div[3]/div/input",
     "BTN_SALVAR_PAGAMENTO_MODAL": "/html/body/div[2]/div/div[5]/div/div/form/div[3]/button",
-    "BTN_INSERIR_BAIXA": "/html/body/div[2]/div/div[3]/div/div/table/tbody/tr[1]/td[6]/button",
+    "BTN_INSERIR_BAIXA_CANDIDATES": [
+      "//a[@class='btn btn-info btn-block bnt_inserir'][@data-target='#inserir']",
+      "//a[contains(@class, 'bnt_inserir') and contains(., 'Inserir')]",
+      "//a[@data-target='#inserir' and contains(., 'Inserir')]",
+      "//div[@class='form-group  bnt_inserir']//a[@class='btn btn-info btn-block bnt_inserir']",
+      "//a[contains(., 'Inserir Pagamento')]",
+      "//table//button[contains(@title,'Inserir') or contains(.,'Inserir')]"
+    ],
     "DATA_BAIXA": "/html/body/div[2]/div/div[4]/div/div/form/div[2]/div/div/div[1]/div/div/input",
     "POPUP_CLICK_CANDIDATES": [
       "/html/body/div[2]/div/div[4]/div/div/form/div[2]/div/div/div[2]",

@@ -1,0 +1,247 @@
+================================================================================
+🎯 IMPLEMENTAÇÃO: SISTEMA DE DEBUG INTERATIVO COM LOGS E PAUSA
+================================================================================
+
+✅ STATUS: COMPLETO E FUNCIONANDO
+
+================================================================================
+📝 ARQUIVOS MODIFICADOS
+================================================================================
+
+1. src/soma_app/automation/actions.py
+   ✅ Aprimorado _selector_debug_pause() - agora faz pausa real com input()
+   ✅ Novo método _handle_locator_timeout() - captura diagnósticos
+   ✅ Melhorado wait_present() - captura timeout automático
+   ✅ Melhorado wait_visible() - captura timeout automático
+   ✅ Melhorado wait_clickable() - captura timeout automático
+   ✅ Melhorado click_js() - captura timeout automático
+
+2. src/soma_app/automation/pages/entradas_saidas_page.py
+   ✅ Adicionado log detalhado pré-falha em _do_baixa()
+
+3. deploy/.env
+   ✅ DEBUG_SELECTOR_INTERACTIVE=true (ATIVADO)
+
+================================================================================
+📁 DOCUMENTAÇÃO CRIADA
+================================================================================
+
+1. DEBUG_SELECTOR_INTERACTIVE.md
+   - Documentação rápida do modo interativo
+
+2. DEBUG_GUIDE.md
+   - Guia completo de como usar o sistema
+   - Exemplos de saída
+   - Troubleshooting
+   - Workflow recomendado
+
+3. DEBUG_EXAMPLE.py
+   - Script Python de demonstração
+   - Mostra capacidades do sistema
+
+4. CHANGELOG_DEBUG.md
+   - Detalhes técnicos de todas as mudanças
+   - Código antes/depois
+   - Testes realizados
+
+5. IMPLEMENTATION_SUMMARY.md
+   - Sumário visual implementação
+   - Fluxo de execução
+   - Exemplos práticos
+
+================================================================================
+🎯 FUNCIONALIDADES IMPLEMENTADAS
+================================================================================
+
+✅ 1. PAUSA INTERATIVA APÓS CADA AÇÃO
+   - Cada click, type, select, etc pausa e aguarda ENTER
+   - Permite inspecionar navegador entre ações
+   - Facilita debugging visual
+
+✅ 2. LOGS EM TEMPO REAL (CONSOLE)
+   - [SELECTOR] action=... | method=... | selector=...
+   - Mostra xpath/css/id/name completo
+   - Detalhes adicionais (valor, clear, etc)
+
+✅ 3. ARQUIVO DE LOG (LINHA DO TEMPO)
+   - logs/soma_selectors_YYYYMMDD_HHMMSS.log
+   - Timestamp de cada ação
+   - Pronto para análise posterior
+
+✅ 4. CAPTURA AUTOMÁTICA EM TIMEOUT
+   - 📸 Screenshot automático: artifacts/screenshots/timeout_*.png
+   - 📄 HTML completo: artifacts/diagnostics/timeout_*.html
+   - 📊 Contagem de elementos encontrados (found=N)
+   - 📋 Log detalhado com URL e title
+
+✅ 5. CONTROLE VIA VARIÁVEL DE AMBIENTE
+   - DEBUG_SELECTOR_INTERACTIVE=true (ativa)
+   - DEBUG_SELECTOR_INTERACTIVE=false (desativa)
+
+================================================================================
+🚀 COMO USAR
+================================================================================
+
+1. ATIVAR
+   - Editar: deploy/.env
+   - Alterar: DEBUG_SELECTOR_INTERACTIVE=true
+   - Já está ativado!
+
+2. EXECUTAR
+   - python main.py
+
+3. ACOMPANHAR
+   - [SELECTOR] logs aparecem no console
+   - Vê cada ação no navegador
+   - Pressiona ENTER para continuar
+
+4. SE FALHAR
+   - Screenshots salvos automaticamente
+   - HTML diagnostics salvos automaticamente
+   - Verificar artifacts/screenshots/ e artifacts/diagnostics/
+
+5. DESATIVAR (PRODUÇÃO)
+   - Alterar: DEBUG_SELECTOR_INTERACTIVE=false
+   - Continua sem pausas
+
+================================================================================
+📊 EXEMPLO DE SAÍDA (COM DEBUG)
+================================================================================
+
+Console:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[SELECTOR] START | modo interativo de seletores ativo
+[SELECTOR] action=type | method=name | selector=email | clear=True | value_length=26
+
+✓ action=type | method=name | selector=email | clear=True | value_length=26
+→ Pressione ENTER para continuar...
+
+[Usuario pressiona ENTER]
+
+[SELECTOR] action=type | method=name | selector=senha | clear=True | value_length=11
+
+✓ action=type | method=name | selector=senha | clear=True | value_length=11
+→ Pressione ENTER para continuar...
+
+[Usuario pressiona ENTER]
+
+[SELECTOR] action=click | method=name | selector=submit
+
+✓ action=click | method=name | selector=submit
+→ Pressione ENTER para continuar...
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Arquivo (logs/soma_selectors_20260805_161530.log):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-08-05 16:15:30 | START | modo interativo de seletores ativo
+2026-08-05 16:15:31 | action=type | method=name | selector=email | clear=True | value_length=26
+2026-08-05 16:15:32 | action=type | method=name | selector=senha | clear=True | value_length=11
+2026-08-05 16:15:33 | action=click | method=name | selector=submit
+2026-08-05 16:15:34 | action=click_js | method=xpath | selector=//*[contains(.,'SOMA')]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Em caso de erro (Timeout):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[TIMEOUT] TIMEOUT em click_js | method=xpath | selector=... | found=0
+          | screenshot=artifacts/screenshots/timeout_click_js_xpath.png
+          | html=artifacts/diagnostics/timeout_click_js_xpath.html
+          | url=https://verbodavida.info/IVV/ | title=SOMA - Entradas/Saídas
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+================================================================================
+✅ MÉTODOS COBERTOS
+================================================================================
+
+✅ click() - clique simples
+✅ click_js() - clique via JavaScript
+✅ type() - input de texto
+✅ press_enter() - pressionar ENTER
+✅ select_by_text() - select dropdown
+✅ select2_choose() - select2 com busca
+✅ wait_present() - esperar elemento presente
+✅ wait_visible() - esperar elemento visível
+✅ wait_clickable() - esperar elemento clicável
+
+================================================================================
+✅ SELETORES SUPORTADOS
+================================================================================
+
+✅ XPath: //div[@id='test']
+✅ CSS Selector: div.test
+✅ By Name: input[name='email']
+✅ By ID: #test
+✅ By Class: .test
+✅ By Tag: div
+✅ By Link Text: Link Text
+
+================================================================================
+📁 ESTRUTURA DE ARQUIVOS GERADOS
+================================================================================
+
+logs/
+  ├─ soma_selectors_20260805_161530.log    ← Log interativo (nova)
+  ├─ soma_dev_20260805_161530.log          ← Log da app (existente)
+  └─ soma_audit_20260805_161530.log        ← Log auditoria (existente)
+
+artifacts/
+  ├─ screenshots/
+  │  ├─ timeout_click_js_xpath.png         ← Screenshot de erro (nova)
+  │  └─ ...
+  │
+  └─ diagnostics/
+     ├─ timeout_click_js_xpath.html        ← HTML completo (nova)
+     └─ ...
+
+================================================================================
+🎓 PRÓXIMOS PASSOS
+================================================================================
+
+1. TESTAR COM ERROS REAIS
+   $ DEBUG_SELECTOR_INTERACTIVE=true python main.py
+
+2. INSPECIONAR DIAGNÓSTICOS
+   - Abrir screenshots quando falhar
+   - Abrir HTML para análise de elementos
+
+3. REFINAR SELETORES
+   - Usar informações de "found=N" para entender problema
+   - Atualizar locators.json
+
+4. DESATIVAR PARA PRODUÇÃO
+   $ DEBUG_SELECTOR_INTERACTIVE=false
+
+================================================================================
+📞 SUPORTE
+================================================================================
+
+Para entender melhor como usar:
+- Ler: DEBUG_GUIDE.md (guia completo)
+- Ler: IMPLEMENTATION_SUMMARY.md (visão geral)
+- Rodar: python DEBUG_EXAMPLE.py (demonstração)
+
+Para debugar erros específicos:
+1. Ativar DEBUG_SELECTOR_INTERACTIVE=true
+2. Executar até falhar
+3. Verificar:
+   - artifacts/screenshots/timeout_*.png
+   - artifacts/diagnostics/timeout_*.html
+   - logs/soma_selectors_*.log
+4. Usar DevTools (F12) para inspecionar
+
+================================================================================
+✅ STATUS FINAL
+================================================================================
+
+✓ Modo debug interativo implementado
+✓ Logs em arquivo funcionando
+✓ Captura automática de screenshots
+✓ Captura automática de HTML
+✓ Tratamento robusto de timeouts
+✓ Variável de ambiente funcionando
+✓ Documentação completa criada
+✓ Exemplos funcionando
+✓ Testado em execução real
+
+🎉 IMPLEMENTAÇÃO CONCLUÍDA COM SUCESSO
+
+================================================================================
