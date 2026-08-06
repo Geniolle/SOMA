@@ -337,6 +337,58 @@ class Actions:
     def wait_invisible(self, locator: Locator, timeout_seconds: Optional[int] = None) -> None:
         self._wait(timeout_seconds).until(EC.invisibility_of_element_located(locator))
 
+    def wait_any_visible_element(self, locators: Iterable[Locator], timeout_seconds: Optional[int] = None) -> WebElement:
+        """Encontra o PRIMEIRO elemento visível entre os candidatos."""
+        from selenium.common.exceptions import StaleElementReferenceException
+
+        last_err: Optional[Exception] = None
+        locators_list = list(locators)
+
+        def _probe(_driver):
+            nonlocal last_err
+            for loc in locators_list:
+                try:
+                    elements = _driver.find_elements(*loc)
+                    for el in elements:
+                        try:
+                            if el.is_displayed():
+                                return el
+                        except StaleElementReferenceException:
+                            continue
+                except Exception as e:
+                    last_err = e
+            return False
+
+        try:
+            return self._wait(timeout_seconds).until(_probe)
+        except TimeoutException:
+            screenshot_path = self.screenshot("wait_any_visible_timeout")
+            html_path = self.dump_page_source("wait_any_visible_timeout")
+            json_path = self.dump_locator_probe("wait_any_visible_timeout", locators_list)
+
+            log.error(
+                "[TIMEOUT] wait_any_visible_element com %d locators | last_err=%s | screenshot=%s | html=%s | json=%s",
+                len(locators_list),
+                last_err,
+                screenshot_path,
+                html_path,
+                json_path,
+            )
+
+            raise TimeoutException(
+                f"Timeout à espera de qualquer locator visível. last_err={last_err} | "
+                f"screenshot={screenshot_path} | html={html_path} | json={json_path}"
+            )
+
+    def click_any_visible(self, locators: Iterable[Locator], timeout_seconds: Optional[int] = None) -> None:
+        """Clica no PRIMEIRO elemento visível entre os candidatos."""
+        el = self.wait_any_visible_element(locators, timeout_seconds=timeout_seconds)
+        try:
+            el.click()
+        except ElementClickInterceptedException:
+            self.driver.execute_script("arguments[0].click();", el)
+        self._selector_debug_pause("click_any_visible", locators[0] if list(locators) else (By.TAG_NAME, "div"))
+
     def select2_choose(
         self,
         opener: Locator,

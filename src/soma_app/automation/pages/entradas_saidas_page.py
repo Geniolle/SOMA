@@ -94,16 +94,50 @@ class EntradasSaidasPage:
 
     BTN_INSERIR_BAIXA = (By.XPATH, "/html/body/div[2]/div/div[2]/div/div/form/div[29]/div/div[2]/a")
     BTN_INSERIR_BAIXA_CANDIDATES = [
-        (By.XPATH, "//a[@class='btn btn-info btn-block bnt_inserir'][@data-target='#inserir']"),
-        (By.XPATH, "//a[contains(@class, 'bnt_inserir') and contains(., 'Inserir')]"),
-        (By.XPATH, "//a[@data-target='#inserir' and contains(., 'Inserir')]"),
-        (By.XPATH, "//div[@class='form-group  bnt_inserir']//a[@class='btn btn-info btn-block bnt_inserir']"),
-        (By.XPATH, "//a[contains(., 'Inserir Pagamento')]"),
-        (By.XPATH, "//table//button[contains(@title,'Inserir') or contains(.,'Inserir')]"),
+        (By.XPATH, "//button[@id and contains(@data-target, 'inserirBaixa')]"),
+        (By.XPATH, "//button[contains(., 'Inserir Baixa')]"),
+        (By.XPATH, "//a[contains(@data-target, 'inserir') and contains(., 'Inserir')]"),
+        (By.CSS_SELECTOR, "button[data-toggle='modal']"),
     ]
+
+    # Baixa - campo de data dentro do modal #inserirBaixa (visível)
+    DATA_BAIXA_CANDIDATES = [
+        (By.XPATH, "//*[@id='inserirBaixa']//input[@name='data_baixa']"),
+        (By.XPATH, "//*[@id='inserirBaixa']//input[@class and contains(@class, 'datepicker')]"),
+        (By.CSS_SELECTOR, "#inserirBaixa input[name='data_baixa']"),
+        (By.CSS_SELECTOR, "#inserirBaixa input.datepicker"),
+    ]
+
+    # Baixa - forma de pagamento dentro do modal #inserirBaixa
+    FORMA_PAGAMENTO_BAIXA_CANDIDATES = [
+        (By.XPATH, "//*[@id='inserirBaixa']//select[@name='forma_pagamento']"),
+        (By.CSS_SELECTOR, "#inserirBaixa select[name='forma_pagamento']"),
+    ]
+
+    # Baixa - numero de documento dentro do modal #inserirBaixa
+    NUM_DOCUMENTO_BAIXA_CANDIDATES = [
+        (By.XPATH, "//*[@id='inserirBaixa']//input[@name='num_documento']"),
+        (By.CSS_SELECTOR, "#inserirBaixa input[name='num_documento']"),
+    ]
+
+    # Baixa - caixa dentro do modal #inserirBaixa
+    CAIXA_BAIXA_CANDIDATES = [
+        (By.XPATH, "//*[@id='inserirBaixa']//select[@name='caixa' or contains(@class, 'caixa')]"),
+        (By.CSS_SELECTOR, "#inserirBaixa select[name='caixa']"),
+    ]
+
+    # Baixa - botão salvar dentro do modal #inserirBaixa
+    BTN_SALVAR_BAIXA_CANDIDATES = [
+        (By.XPATH, "//*[@id='inserirBaixa']//button[contains(., 'Salvar') or contains(., 'OK')]"),
+        (By.CSS_SELECTOR, "#inserirBaixa button[type='submit']"),
+        (By.CSS_SELECTOR, "#inserirBaixa .modal-footer button"),
+    ]
+
+    POPUP_CLICK_CANDIDATES = []
+
+    # Fallbacks absolutos (não use como primeiro candidato)
     DATA_BAIXA = (By.XPATH, "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[1]/div[1]/div/input")
     FORMA_PAGAMENTO_MODAL = (By.XPATH, "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]/div[1]/div/select")
-    POPUP_CLICK_CANDIDATES = []
     BTN_SALVAR_BAIXA = (By.XPATH, "/html/body/div[2]/div/div[5]/div/div/form/div[3]/button")
 
     # =========
@@ -774,38 +808,88 @@ class EntradasSaidasPage:
                 raise RuntimeError(f"CAIXA_PAGAMENTO_MODAL incorreta. esperado='{row.caixa}' | selecionado='{chosen_cx}'")
 
     def _do_baixa(self, row: ContaOrdemRow) -> None:
+        if row.forma_pagamento.lower().replace(" ", "") == "transferênciabanc ária".lower().replace(" ", "") or \
+           row.forma_pagamento.lower().replace(" ", "") == "transferenciabancar ia".lower().replace(" ", ""):
+            if not row.id_interno or not row.id_interno.strip():
+                raise ValueError(f"Transferência bancária requer ID_INTERNO preenchido. Linha {row.row_number}")
+
         with step(log, "entradas_saidas.baixa", row=row.row_number, tipo=row.tipo.value, data=row.data_mov):
             self._dismiss_overlays()
-            log.info("[PRE-BAIXA] Tentando clicar em BTN_INSERIR_BAIXA | candidates=%d | url=%s",
-                     len(self.BTN_INSERIR_BAIXA_CANDIDATES), self.a.driver.current_url)
+            log.info("[PRE-BAIXA] Tentando clicar em BTN_INSERIR_BAIXA | url=%s", self.a.driver.current_url)
+
+            # Encontrar botão visível
             try:
-                btn_low = self.a.wait_any_present(self.BTN_INSERIR_BAIXA_CANDIDATES, timeout_seconds=30)
-                log.info("[PRE-BAIXA] BTN_INSERIR_BAIXA encontrado usando: %s", btn_low)
-                self.a.click_js(btn_low)
+                self.a.click_any_visible(self.BTN_INSERIR_BAIXA_CANDIDATES, timeout_seconds=30)
             except TimeoutException:
-                log.error("[PRE-BAIXA] Nenhum candidate de BTN_INSERIR_BAIXA encontrado. Candidates: %s",
-                         [str(loc) for loc in self.BTN_INSERIR_BAIXA_CANDIDATES])
+                log.error("[PRE-BAIXA] Nenhum candidate visível de BTN_INSERIR_BAIXA encontrado")
                 raise
+
+            # Aguardar modal #inserirBaixa ficar visível
             time.sleep(1)
-            self._emit("Inserir Baixa salvo com sucesso!", row=row.row_number, tipo=row.tipo.value)
-
-            self.a.type(self.DATA_BAIXA, row.data_mov)
-            time.sleep(0.5)
-            v = self._input_value(self.DATA_BAIXA) or row.data_mov
-            self._emit(f"Data início preenchida com sucesso: {v}", row=row.row_number, tipo=row.tipo.value)
-
             try:
-                loc = self.a.wait_any_present(self.POPUP_CLICK_CANDIDATES, timeout_seconds=3)
-                self.a.click_js(loc)
-                self._emit("Click na janela pop-up com sucesso", row=row.row_number, tipo=row.tipo.value)
+                self.a.wait_visible((By.ID, "inserirBaixa"), timeout_seconds=10)
+            except TimeoutException:
+                log.error("[PRE-BAIXA] Modal #inserirBaixa não ficou visível")
+                self._emit("Erro: Modal de baixa não abriu", row=row.row_number, tipo=row.tipo.value)
+                raise
+
+            self._emit("Modal de baixa aberto com sucesso", row=row.row_number, tipo=row.tipo.value)
+
+            # Preencher data dentro do modal visível
+            try:
+                el_date = self.a.wait_any_visible_element(self.DATA_BAIXA_CANDIDATES, timeout_seconds=10)
+                el_date.clear()
+                el_date.send_keys(row.data_mov)
+                v = (el_date.get_attribute("value") or "").strip()
+                self._emit(f"Data da baixa preenchida: {v}", row=row.row_number, tipo=row.tipo.value)
+            except TimeoutException:
+                log.error("[BAIXA] Campo DATA_BAIXA não encontrado ou oculto")
+                raise
+
+            # Fechar datepicker se necessário
+            try:
+                el_date.send_keys(Keys.TAB)
+                time.sleep(0.3)
             except Exception:
                 pass
 
-            self.a.click_js(self.BTN_SALVAR_BAIXA)
-            time.sleep(2)
-            self._emit("Salvar Baixa salvo com sucesso!", row=row.row_number, tipo=row.tipo.value)
+            # Selecionar forma de pagamento (se necessário)
+            try:
+                forma_sel = self.a.wait_any_visible_element(self.FORMA_PAGAMENTO_BAIXA_CANDIDATES, timeout_seconds=10)
+                forma_text = row.forma_pagamento or "TRANSFERÊNCIA BANCÁRIA"
+                Select(forma_sel).select_by_visible_text(forma_text)
+                self._emit(f"Forma de pagamento selecionada: {forma_text}", row=row.row_number, tipo=row.tipo.value)
+            except Exception as e:
+                log.warning("[BAIXA] Falha ao selecionar forma de pagamento: %s", e)
+
+            # Preencher Nº Documento com ID_INTERNO
+            try:
+                el_ndoc = self.a.wait_any_visible_element(self.NUM_DOCUMENTO_BAIXA_CANDIDATES, timeout_seconds=5)
+                el_ndoc.clear()
+                el_ndoc.send_keys(row.id_interno or row.descricao_soma)
+                self._emit(f"Nº Documento preenchido: {row.id_interno}", row=row.row_number, tipo=row.tipo.value)
+            except Exception as e:
+                log.warning("[BAIXA] Falha ao preencher Nº Documento: %s", e)
+
+            # Clicar em Salvar Baixa dentro do modal visível
+            try:
+                self.a.click_any_visible(self.BTN_SALVAR_BAIXA_CANDIDATES, timeout_seconds=10)
+                time.sleep(2)
+            except Exception as e:
+                log.error("[BAIXA] Falha ao clicar em Salvar Baixa: %s", e)
+                raise
+
+            self._emit("Botão Salvar Baixa clicado", row=row.row_number, tipo=row.tipo.value)
+
+            # Aguardar modal fechar
+            try:
+                self.a.wait_invisible((By.ID, "inserirBaixa"), timeout_seconds=10)
+            except TimeoutException:
+                log.warning("[BAIXA] Modal #inserirBaixa ainda visível após Salvar")
+
+            # Tratar SweetAlert
             self._dismiss_overlays()
-            self._emit("Botão 'OK Baixa' clicado com sucesso!", row=row.row_number, tipo=row.tipo.value)
+            self._emit("Baixa realizada com sucesso", row=row.row_number, tipo=row.tipo.value)
 
     # -----------------------
     # doc search
