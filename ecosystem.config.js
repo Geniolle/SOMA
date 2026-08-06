@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: "soma-automation",
-      script: "main.py",
+      script: "agendador.py",
       interpreter: ".venv/bin/python",
       cwd: "/home/ubuntu/soma-automation/SOMA",
       instances: 1,
@@ -11,14 +11,13 @@ module.exports = {
         RUN_ENV: "production",
         LOG_LEVEL: "INFO",
         CONSOLE_LOG_LEVEL: "ERROR",
-        HEADLESS: "false",
+        HEADLESS: "true",
+        AGENDADOR_INTERVAL_SECONDS: "120",
       },
       log_date_format: "YYYY-MM-DD HH:mm:ss Z",
       error_file: "logs/soma-error.log",
       out_file: "logs/soma-out.log",
       merge_logs: true,
-      max_size: "100M",
-      max_file: 14,
       autorestart: true,
       watch: false,
       ignore_watch: [
@@ -32,6 +31,7 @@ module.exports = {
       min_uptime: "30s",
       max_restarts: 5,
       restart_delay: 5000,
+      kill_timeout: 15000,
     },
   ],
 };
