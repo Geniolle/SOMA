@@ -1,112 +1,71 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# 🚀 Script de Deployment no Servidor
-# Automatiza: git reset, pull, npm install, pm2 restart
+set -Eeuo pipefail
 
-set -e  # Exit on error
+PROJECT_DIR="${1:-/home/ubuntu/soma-automation/SOMA}"
+PROCESS_NAME="soma-automation"
 
-echo "================================================"
-echo "DEPLOYMENT NO SERVIDOR - SOMA"
-echo "================================================"
-echo ""
+log() {
+  printf '%s\n' "$*"
+}
 
-PROJECT_DIR="${1:-.}"
-cd "$PROJECT_DIR"
+fail() {
+  log "ERRO: $*"
+  exit 1
+}
 
-echo "📍 Diretório: $(pwd)"
-echo ""
+log "================================================"
+log "DEPLOYMENT SEGURO NO SERVIDOR - SOMA"
+log "================================================"
 
-# 1. Sincronizar com GitHub
-echo "🔄 [1/5] Sincronizando com GitHub..."
-echo "   - Descartando alterações locais..."
-git fetch origin
-git reset --hard origin/main
+cd "$PROJECT_DIR" || fail "Diretório não encontrado: $PROJECT_DIR"
+log "Diretório: $(pwd)"
 
-echo "   - Puxando atualizações..."
-git pull origin main
-echo "   ✅ Git sincronizado"
-echo ""
+command -v git >/dev/null 2>&1 || fail "git não está instalado."
+command -v pm2 >/dev/null 2>&1 || fail "pm2 não está instalado."
 
-# 2. Verificar se npm existe
-if command -v npm &> /dev/null; then
-    echo "📦 [2/5] Atualizando dependências Node.js..."
-    npm install --production
-    echo "   ✅ Node.js dependências instaladas"
-    echo ""
-else
-    echo "⚠️  [2/5] npm não encontrado, pulando..."
-    echo ""
+if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+  git status --short
+  fail "Existem alterações locais rastreadas no servidor. Deployment interrompido para não perder dados."
 fi
 
-# 3. Verificar se Python venv existe
-if [ -d ".venv" ]; then
-    echo "🐍 [3/5] Atualizando dependências Python..."
-    .venv/bin/pip install -q -r requirements.lock.txt 2>/dev/null || true
-    echo "   ✅ Python dependências atualizadas"
-    echo ""
-else
-    echo "⚠️  [3/5] venv não encontrado, criando..."
-    python3 -m venv .venv
-    .venv/bin/pip install -q -r requirements.lock.txt
-    echo "   ✅ venv criado e dependências instaladas"
-    echo ""
+log "[1/6] Atualizando referências do GitHub..."
+git fetch origin main --prune
+REMOTE_SHA="$(git rev-parse origin/main)"
+LOCAL_SHA="$(git rev-parse HEAD)"
+log "Commit servidor antes: $LOCAL_SHA"
+log "Commit GitHub:         $REMOTE_SHA"
+
+log "[2/6] Atualizando a branch main por fast-forward..."
+git checkout main
+git pull --ff-only origin main
+
+[ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] \
+  || fail "O servidor não ficou no mesmo commit do GitHub."
+
+log "[3/6] Preparando ambiente Python..."
+if [ ! -x ".venv/bin/python" ]; then
+  python3 -m venv .venv
 fi
 
-# 4. Reiniciar com PM2
-echo "🔄 [4/5] Reiniciando processos PM2..."
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -r requirements.lock.txt
 
-if command -v pm2 &> /dev/null; then
-    # Parar o processo específico se existir
-    if pm2 list | grep -q "bot-igreja"; then
-        pm2 stop bot-igreja
-        pm2 restart bot-igreja
-        echo "   ✅ bot-igreja reiniciado"
-    else
-        echo "   ⚠️  bot-igreja não encontrado em pm2"
-    fi
+log "[4/6] Validando o código..."
+.venv/bin/python -m compileall -q src main.py agendador.py
+mkdir -p logs artifacts/screenshots artifacts/diagnostics
 
-    # Opção: reiniciar tudo
-    # pm2 stop all
-    # pm2 restart all
-    # echo "   ✅ Todos os processos reiniciados"
+log "[5/6] Iniciando ou recarregando o job automático..."
+pm2 startOrReload ecosystem.config.js --only "$PROCESS_NAME" --update-env
+pm2 save
 
-    echo ""
-else
-    echo "   ⚠️  pm2 não encontrado"
-    echo "   Se quiser usar pm2, instale com: npm install -g pm2"
-    echo ""
-fi
+log "[6/6] Validando status e logs..."
+pm2 status "$PROCESS_NAME"
+pm2 logs "$PROCESS_NAME" --lines 50 --nostream
 
-# 5. Verificar status
-echo "📊 [5/5] Verificando status..."
-echo ""
-
-if command -v pm2 &> /dev/null; then
-    echo "Status dos processos:"
-    pm2 status
-
-    echo ""
-    echo "Últimos logs (primeiras 30 linhas):"
-    echo "---"
-    pm2 logs orquestrador-soma --lines 30 --nostream || true
-    echo "---"
-else
-    echo "⚠️  pm2 não disponível para status"
-fi
-
-echo ""
-echo "================================================"
-echo "✅ DEPLOYMENT CONCLUÍDO!"
-echo "================================================"
-echo ""
-echo "📝 Resumo:"
-echo "   ✅ Git sincronizado"
-echo "   ✅ Dependências atualizadas"
-echo "   ✅ Processos reiniciados"
-echo ""
-echo "📊 Para monitorar em tempo real:"
-echo "   pm2 monit"
-echo ""
-echo "📋 Para ver logs contínuos:"
-echo "   pm2 logs bot-igreja"
-echo ""
+FINAL_SHA="$(git rev-parse HEAD)"
+log "================================================"
+log "DEPLOYMENT CONCLUÍDO"
+log "Commit ativo: $FINAL_SHA"
+log "Processo PM2: $PROCESS_NAME"
+log "================================================"
