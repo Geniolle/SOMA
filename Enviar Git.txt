@@ -30,7 +30,7 @@ git reset --hard origin/main
 🚀 Passo 2: Descarregar as atualizações do GitHub
 git pull
 
-(Se ele perguntar origin main ou origin master, escreve: git pull origin main). 
+(Se ele perguntar origin main ou origin master, escreve: git pull origin main).
 O servidor vai mostrar uma mensagem a dizer que transferiu os ficheiros e que fez o merge.
 
 🚀 Passo 3: Atualizar as dependências (Por precaução)
