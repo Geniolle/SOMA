@@ -28,6 +28,7 @@ dev = [
 [project.scripts]
 soma-run = "soma_app.workflows.run_soma:main"
 soma-scheduler = "soma_app.scheduler:main"
+soma-reconcile = "soma_app.workflows.reconcile_t_extrato:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
