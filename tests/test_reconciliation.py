@@ -209,3 +209,37 @@ def test_period_filters_source_only():
     assert [item.id_interno for item in report.items] == ["EXTAPR"]
     assert report.source_rows_total == 1
     assert report.source_rows_outside_period == 1
+
+
+def test_real_source_doc_vs_placeholder_conta_is_reported_and_does_not_false_match_soma():
+    report = reconcile_t_extrato(
+        [
+            _source(
+                "EXT0000002976",
+                doc="5161859",
+                tipo="Cartão",
+                descricao="PAG. CARTAO BUSTRADE",
+                valor="-289,21",
+            )
+        ],
+        [
+            _conta(
+                "EXT0000002976",
+                doc="PGTO CARTÃO",
+                tipo="Cartão",
+                descricao="PAG.CARTAOBUSTRADE",
+                valor="289,21",
+                descricao_soma="PAGTO DE CARTÂO DE CRÉDITO",
+            )
+        ],
+        [_soma(codigo="5161859", tipo="ENTRADA", valor="230,00")],
+        year=2026,
+        month=4,
+    )
+
+    item = report.items[0]
+    assert item.category == ReconciliationCategory.NAO_ENCONTRADO_SOMA
+    codes = {issue.code for issue in item.issues}
+    assert "DOC_ORIGEM_CONTA" in codes
+    assert "CONTAORDEM_SEM_DOC_SOMA" in codes
+    assert item.soma_rows == []
