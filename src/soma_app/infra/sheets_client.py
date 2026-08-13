@@ -193,6 +193,33 @@ class SheetsClient:
     def get_all_records(self, ws: str) -> List[Dict[str, Any]]:
         return self._ws(ws).get_all_records()
 
+    def get_all_records_formatted(self, ws: str) -> List[Dict[str, Any]]:
+        """Lê todos os registos preservando os valores *formatados* da sheet.
+
+        Ao contrário de :meth:`get_all_records`, este método:
+        - Passa ``numericise_ignore=['all']`` para impedir que o gspread
+          converta automaticamente strings numéricas (ex.: ``230,00`` viraria
+          ``23000`` sem esta opção).
+        - Usa ``ValueRenderOption.formatted`` (``FORMATTED_VALUE``) para que
+          a API devolva os valores exatamente como são exibidos na sheet,
+          incluindo formatação de número, símbolos de moeda, etc.
+
+        Deve ser usado exclusivamente pela conciliação read-only, que precisa
+        de comparar valores financeiros em texto antes de os parsear com
+        :func:`~soma_app.domain.reconciliation.parse_amount`.
+        Não substituir :meth:`get_all_records` noutras rotinas.
+        """
+        try:
+            from gspread.utils import ValueRenderOption  # type: ignore
+            render = ValueRenderOption.formatted
+        except ImportError:
+            render = None  # type: ignore
+
+        return self._ws(ws).get_all_records(
+            numericise_ignore=["all"],
+            value_render_option=render,
+        )
+
     def read_all_records(self, ws: str) -> List[Dict[str, Any]]:
         return self.get_all_records(ws)
 
