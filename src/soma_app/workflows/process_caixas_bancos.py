@@ -24,12 +24,6 @@ def atualizar_caixas_bancos(sheets: Any, actions: Any, settings: Any) -> None:
     """
     ws_caixas = (getattr(settings, "sheet_caixas", "") or "GERENCIAR CAIXAS").strip()
 
-    print()
-    print("==================================================================")
-    print("(6) Iniciando o processo 'Caixas/bancos'")
-    print("==================================================================")
-    print()
-
     page = CaixasBancosPage(actions, settings)
 
     with step(log, "caixas.run", ws=ws_caixas):

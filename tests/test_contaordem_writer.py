@@ -14,8 +14,11 @@ class FakeSheetsClient:
         self.header = header
         self.records = records
         self.updated_cells: list[tuple] = []
+        self.header_reads = 0
+        self.batch_updates: list[tuple[str, list[tuple[str, list[list[object]]]]]] = []
 
     def get_header(self, ws: str, row: int = 1):
+        self.header_reads += 1
         return list(self.header)
 
     def get_all_records(self, ws: str):
@@ -23,6 +26,22 @@ class FakeSheetsClient:
 
     def update_cell(self, ws: str, row: int, col: int, value):
         self.updated_cells.append((ws, row, col, value))
+
+    def batch_update(self, ws: str, ranges):
+        payload = list(ranges)
+        self.batch_updates.append((ws, payload))
+        for a1, values in payload:
+            cell = a1.split("!", 1)[-1]
+            col = 0
+            row_txt = ""
+            for ch in cell:
+                if ch.isalpha():
+                    col = col * 26 + (ord(ch.upper()) - 64)
+                elif ch.isdigit():
+                    row_txt += ch
+            row = int(row_txt) if row_txt else 0
+            value = values[0][0] if values and values[0] else None
+            self.updated_cells.append((ws, row, col, value))
 
 
 def _build_table(header, records):
@@ -121,3 +140,27 @@ def test_unlock_still_processing_resets_locked_rows_only():
     assert written_row2[table.col_idx("DOC. SOMA")] == ""
     assert written_row2[table.col_idx("STATUS")] == "VALIDADO"
     assert all(r != 3 for (_ws, r, _c, _v) in fake.updated_cells)
+
+
+def test_batch_update_cells_prefers_direct_range_updates_without_reloading_header():
+    table, fake = _build_table(
+        ["TIPO", "DOC. SOMA", "STATUS", "IDUSER", "TIMESTAMP"],
+        [{"TIPO": "Entrada", "DOC. SOMA": "", "STATUS": "", "IDUSER": "", "TIMESTAMP": ""}],
+    )
+
+    fake.updated_cells.clear()
+    fake.batch_updates.clear()
+    fake.header_reads = 0
+
+    table.batch_update_cells([(2, "DOC. SOMA", "DOC-9"), (2, "STATUS", "VALIDADO")])
+
+    assert fake.header_reads == 0
+    assert fake.batch_updates == [
+        (
+            "CONTAORDEM",
+            [
+                ("CONTAORDEM!B2", [["DOC-9"]]),
+                ("CONTAORDEM!C2", [["VALIDADO"]]),
+            ],
+        )
+    ]

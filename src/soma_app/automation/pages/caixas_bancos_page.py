@@ -191,9 +191,15 @@ class CaixasBancosPage:
             if not vals:
                 # nenhuma leitura funcionou => provavelmente não estamos no ecrã certo
                 p = self._snap("caixas_no_values_found")
-                raise TimeoutException(
-                    f"Nenhum valor de Caixas/Bancos foi encontrado. url={getattr(self.a.driver,'current_url',None)} screenshot={p}"
+                log_kv(
+                    log,
+                    "Nenhum valor de Caixas/Bancos foi encontrado. Vou seguir sem atualizar a sheet.",
+                    level=logging.WARNING,
+                    url=getattr(self.a.driver, "current_url", None),
+                    title=getattr(self.a.driver, "title", None),
+                    screenshot=p,
                 )
+                return {}
 
             print("(6.2) Valores lidos do site:")
             for k, v in vals.items():

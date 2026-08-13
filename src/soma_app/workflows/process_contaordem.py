@@ -92,22 +92,6 @@ class SheetsTable:
         if not updates:
             return
 
-        # tenta métodos “altos” do SheetsClient (se existirem)
-        for meth in ("batch_update_rows", "batch_update_row_values", "update_rows"):
-            fn = getattr(self.sheets, meth, None)
-            if callable(fn):
-                # monta payload row-based
-                payload = []
-                for row_idx, col_name, value in updates:
-                    payload.append({"row": row_idx, col_name: value})
-                try:
-                    fn(ws=self.ws, updates=payload)  # padrão comum
-                    return
-                except TypeError:
-                    fn(self.ws, payload)
-                    return
-
-        # tenta batch_update por ranges (A1)
         fn = getattr(self.sheets, "batch_update", None)
         if callable(fn):
             ranges_payload = []
@@ -129,6 +113,10 @@ class SheetsTable:
                     return
                 except TypeError:
                     pass
+            except Exception:
+                # Se o batch update falhar por quota/API, degradamos para updates unitários
+                # sem passar por batch_update_rows, que recalcula header e aumenta leitura.
+                pass
 
         # tenta update_cell (singular)
         fn = getattr(self.sheets, "update_cell", None)

@@ -394,11 +394,13 @@ def _process_row(
             doc_id = entradas_saidas.create_and_get_doc_id(row_model)
 
             dados_doc = None
-            try:
-                dados_doc = entradas_saidas.fetch_dados_doc(str(doc_id))
-            except Exception:
+            if str(doc_id).startswith("SEM_DOC_"):
                 dados_doc = None
-
+            else:
+                try:
+                    dados_doc = entradas_saidas.fetch_dados_doc(str(doc_id))
+                except Exception:
+                    dados_doc = None
             elapsed_ms = int((time.perf_counter() - row_t0) * 1000)
             mark_row_ok(
                 table,

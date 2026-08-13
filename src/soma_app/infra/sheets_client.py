@@ -143,6 +143,7 @@ class SheetsClient:
 
     def __init__(self, settings: Any):
         self.settings = settings
+        self._header_cache: dict[tuple[str, int], list[str]] = {}
 
         try:
             import gspread  # type: ignore
@@ -199,8 +200,15 @@ class SheetsClient:
         return self.get_all_records(ws)
 
     def get_header(self, ws: str, row: int = 1) -> List[str]:
+        cache_key = (ws, row)
+        cached = self._header_cache.get(cache_key)
+        if cached is not None:
+            return list(cached)
+
         values = self._ws(ws).row_values(row)
-        return [str(x).strip() for x in values]
+        header = [str(x).strip() for x in values]
+        self._header_cache[cache_key] = list(header)
+        return header
 
     def get_row(self, ws: str, row: int) -> List[str]:
         return self._ws(ws).row_values(row)

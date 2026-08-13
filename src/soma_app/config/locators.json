@@ -41,7 +41,7 @@
       "//input[@type='radio' and (contains(@id,'Saída') or contains(@id,'Saida') or contains(@name,'Saída') or contains(@name,'Saida'))]",
       "//input[@type='radio' and (contains(@id,'saída') or contains(@id,'saida') or contains(@name,'saída') or contains(@name,'saida'))]"
     ],
-    "PLANO_CONTA": "/html/body/div[2]/div/div[3]/div/div/form/div[6]/div/span/span[1]/span/span[1]",
+    "PLANO_CONTA": "/html/body/div[2]/div/div[3]/div/div/form/div[7]/div/span/span[1]/span/span[1]",
     "CENTRO_CUSTO": "/html/body/div[2]/div/div[3]/div/div/form/div[7]/div/span/span[1]/span",
     "DESCRICAO": "//input[@id='descricao_input']",
     "VALOR": "/html/body/div[2]/div/div[3]/div/div/form/div[12]/div/input",
@@ -87,7 +87,7 @@
     "BTN_SALVAR_FORM": "/html/body/div[2]/div/div[3]/div/div/form/div[30]/div/button[1]",
     "BTN_VOLTAR": "/html/body/div[2]/div/div[2]/div/div/form/div[30]/div/button[2]",
     "FORM_READY_SELECT2": "(//form//span[contains(@class,'select2-selection')])[1]",
-    "OK_ALERT": "/html/body/div[5]/div/button[1]",
+    "OK_ALERT": { "by": "css selector", "value": ".swal2-confirm" },
     "SWAL_CONTAINER": { "by": "class_name", "value": "swal2-container" },
     "BTN_REALIZAR_PAGAMENTO": "/html/body/ul/li/div/div[2]/button[1]",
     "BTN_INSERIR_PAGAMENTO_SAIDA": "/html/body/div[2]/div/div[2]/div/div/form/div[29]/div/div[2]/a",
@@ -104,13 +104,13 @@
       "//a[contains(., 'Inserir Pagamento')]",
       "//table//button[contains(@title,'Inserir') or contains(.,'Inserir')]"
     ],
-    "DATA_BAIXA": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[1]/div[1]/div/input",
-    "FORMA_PAGAMENTO_MODAL": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]/div[1]/div/select",
+    "BTN_INSERIR_BAIXA": "/html/body/div[2]/div/div[3]/div/div/table/tbody/tr[1]/td[6]/button",
+    "DATA_BAIXA": "/html/body/div[2]/div/div[4]/div/div/form/div[2]/div/div/div[1]/div/div/input",
     "POPUP_CLICK_CANDIDATES": [
       "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]",
       "/html/body/div[2]/div/div[5]/div/div/form/div[3]"
     ],
-    "BTN_SALVAR_BAIXA": "/html/body/div[2]/div/div[5]/div/div/form/div[3]/button",
+    "BTN_SALVAR_BAIXA": "/html/body/div[2]/div/div[4]/div/div/form/div[3]/button",
     "PESQ_DESCRICAO": "/html/body/div[2]/div/div[3]/div/div/form/div[3]/div/input",
     "RADIO_PERIODO": "/html/body/div[2]/div/div[3]/div/div/form/div[7]/div/div/input",
     "RADIO_DATA_PAGAMENTO": "/html/body/div[2]/div/div[3]/div/div/form/div[8]/div/div[2]/input",
@@ -127,6 +127,8 @@
   },
   "transferencias": {
     "MENU_CAIXAS_BANCOS_CANDIDATES": [
+      "//a[contains(@href,'exec=transferencias_caixas')]",
+      "a[href*='exec=transferencias_caixas']",
       "/html/body/div[2]/div/div[1]/div[2]/div/div/div/div[4]/div/div/span",
       "//*[self::span or self::a or self::button][contains(.,'Caixas') and contains(.,'Bancos')]",
       "//*[self::span or self::a or self::button][contains(.,'Caixas') and contains(.,'bancos')]"
@@ -142,7 +144,7 @@
     "DESCRICAO": "/html/body/div[2]/div/div[2]/div/div/form/div[9]/div/textarea",
     "BTN_SALVAR": "/html/body/div[2]/div/div[2]/div/div/form/div[10]/div/button[1]",
     "BTN_VOLTAR": "/html/body/div[2]/div/div[2]/div/div/form/div[10]/div/button[2]",
-    "OK_ALERT": "/html/body/div[5]/div/button[1]",
+    "OK_ALERT": { "by": "css selector", "value": ".swal2-confirm" },
     "SWAL_CONTAINER": { "by": "class_name", "value": "swal2-container" },
     "SELECT2_SEARCH": "/html/body/span/span/span[1]/input"
   },
@@ -153,6 +155,8 @@
       "//*[self::a or self::button][contains(.,'SOMA') or contains(.,'Soma')]"
     ],
     "MENU_CAIXAS_BANCOS_CANDIDATES": [
+      "//a[contains(@href,'exec=caixas')]",
+      "a[href*='exec=caixas']",
       "/html/body/div[2]/div/div[1]/div[2]/div/div/div/div[1]/div",
       "//*[self::div or self::span or self::a or self::button][contains(.,'Caixas') and (contains(.,'bancos') or contains(.,'Bancos'))]",
       "//*[contains(.,'Caixas/bancos') or contains(.,'Caixas/Bancos')]"

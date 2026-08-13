@@ -162,6 +162,8 @@ def create_driver(
     downloads_dir: Optional[str] = None,
 ) -> webdriver.Chrome:
     headless_v = _resolve_headless(settings, headless)
+    if env_bool("DEBUG_STEP_MODE", default=False) and headless_v:
+        raise RuntimeError("DEBUG_STEP_MODE=true requer HEADLESS=false para manter o browser visível.")
     downloads_v = _resolve_downloads_dir(settings, downloads_dir)
 
     options = _build_options(headless=headless_v, downloads_dir=downloads_v)

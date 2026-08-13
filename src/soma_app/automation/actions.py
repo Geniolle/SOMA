@@ -337,7 +337,13 @@ class Actions:
     def wait_invisible(self, locator: Locator, timeout_seconds: Optional[int] = None) -> None:
         self._wait(timeout_seconds).until(EC.invisibility_of_element_located(locator))
 
-    def wait_any_visible_element(self, locators: Iterable[Locator], timeout_seconds: Optional[int] = None) -> WebElement:
+    def wait_any_visible_element(
+        self,
+        locators: Iterable[Locator],
+        timeout_seconds: Optional[int] = None,
+        *,
+        log_timeout: bool = True,
+    ) -> WebElement:
         """Encontra o PRIMEIRO elemento visível entre os candidatos."""
         from selenium.common.exceptions import StaleElementReferenceException
 
@@ -366,14 +372,15 @@ class Actions:
             html_path = self.dump_page_source("wait_any_visible_timeout")
             json_path = self.dump_locator_probe("wait_any_visible_timeout", locators_list)
 
-            log.error(
-                "[TIMEOUT] wait_any_visible_element com %d locators | last_err=%s | screenshot=%s | html=%s | json=%s",
-                len(locators_list),
-                last_err,
-                screenshot_path,
-                html_path,
-                json_path,
-            )
+            if log_timeout:
+                log.error(
+                    "[TIMEOUT] wait_any_visible_element com %d locators | last_err=%s | screenshot=%s | html=%s | json=%s",
+                    len(locators_list),
+                    last_err,
+                    screenshot_path,
+                    html_path,
+                    json_path,
+                )
 
             raise TimeoutException(
                 f"Timeout à espera de qualquer locator visível. last_err={last_err} | "
