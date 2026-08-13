@@ -453,7 +453,7 @@ def reconcile_t_extrato(
         conta_doc = normalize_doc(conta.get("DOC. SOMA"))
         item.doc_soma = conta_doc if is_real_doc(conta_doc) else source_doc if is_real_doc(source_doc) else conta_doc
 
-        if is_real_doc(source_doc) and is_real_doc(conta_doc) and source_doc != conta_doc:
+        if is_real_doc(source_doc) and source_doc != conta_doc:
             item.issues.append(
                 ReconciliationIssue(
                     "DOC_ORIGEM_CONTA",
