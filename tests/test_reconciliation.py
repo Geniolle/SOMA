@@ -117,6 +117,48 @@ class TestNormalizeSomaDescription:
 
 
 # ---------------------------------------------------------------------------
+# 3. status_label — formatação do texto para a coluna STATUS
+# ---------------------------------------------------------------------------
+
+
+class TestStatusLabel:
+    """Garante que a propriedade status_label gera exatamente as mensagens pedidas."""
+
+    def test_confirmado(self):
+        sources = [_source("EXT001", "DÍZIMOS E OFERTAS", "230,00")]
+        contas = [_conta("EXT001", "DÍZIMOS E OFERTAS", "230,00", "5161859", descricao_soma="DÍZIMOS E OFERTAS")]
+        somas = [_soma("5161859", "DÍZIMOS E OFERTAS", "230,00")]
+
+        report = _run(sources, contas, somas)
+        item = report.items[0]
+        assert item.status_label == "Confirmado"
+
+    def test_nao_encontrado_contaordem(self):
+        sources = [_source("EXT999", "TESTE", "10,00")]
+        report = _run(sources, [], [])
+        item = report.items[0]
+        assert item.status_label == "Não Encontrado"
+
+    def test_divergencia_importancia(self):
+        sources = [_source("EXT001", "DÍZIMOS E OFERTAS", "230,00")]
+        contas = [_conta("EXT001", "DÍZIMOS E OFERTAS", "500,00", "5161859")]
+        somas = [_soma("5161859", "DÍZIMOS E OFERTAS", "500,00")]
+
+        report = _run(sources, contas, somas)
+        item = report.items[0]
+        assert item.status_label == "Divergência - IMPORTÂNCIA"
+
+    def test_divergencia_data_mov(self):
+        sources = [_source("EXT001", "DÍZIMOS E OFERTAS", "230,00", data="01/04/2026")]
+        contas = [_conta("EXT001", "DÍZIMOS E OFERTAS", "230,00", "5161859", data="15/04/2026")]
+        somas = [_soma("5161859", "DÍZIMOS E OFERTAS", "230,00", data="15/04/2026")]
+
+        report = _run(sources, contas, somas)
+        item = report.items[0]
+        assert item.status_label == "Divergência - DATA MOV."
+
+
+# ---------------------------------------------------------------------------
 # Helpers para construção de registos de teste
 # ---------------------------------------------------------------------------
 

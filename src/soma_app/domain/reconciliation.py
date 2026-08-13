@@ -64,6 +64,30 @@ class ReconciliationItem:
         return f"{self.source_name} {origem} → CONTAORDEM {conta} → SOMA {soma}"
 
     @property
+    def status_label(self) -> str:
+        """Devolve o texto descritivo para preencher a coluna STATUS na sheet T_EXTRATO."""
+        if self.category == ReconciliationCategory.OK:
+            return "Confirmado"
+        if self.category == ReconciliationCategory.EXCLUIDO:
+            return "Excluído"
+        if self.category == ReconciliationCategory.NAO_ENCONTRADO_CONTAORDEM:
+            return "Não Encontrado"
+        if self.category == ReconciliationCategory.NAO_ENCONTRADO_SOMA:
+            return "Não Encontrado no SOMA"
+        if self.category == ReconciliationCategory.DUPLICADO:
+            return "Duplicado"
+        if self.category == ReconciliationCategory.ORIGEM_INVALIDA:
+            return "Origem Inválida"
+        if self.category == ReconciliationCategory.DIVERGENCIA:
+            fields = [issue.field for issue in self.issues if issue.field]
+            if fields:
+                seen = set()
+                uniq_fields = [f for f in fields if not (f in seen or seen.add(f))]
+                return f"Divergência - {', '.join(uniq_fields)}"
+            return "Divergência"
+        return "Pendente"
+
+    @property
     def action(self) -> str:
         if self.category == ReconciliationCategory.NAO_ENCONTRADO_CONTAORDEM:
             return "Verificar a carga/orquestração da origem para a CONTAORDEM."
@@ -457,10 +481,10 @@ def reconcile_t_extrato(
             )
 
         for issue in (
-            _field_issue("DATA_ORIGEM_CONTA", "DATA MOV. origem↔CONTAORDEM", source.get("DATA MOV."), conta.get("DATA MOV."), compare="date"),
-            _field_issue("TIPO_ORIGEM_CONTA", "TIPO origem↔CONTAORDEM", source.get("TIPO"), conta.get("TIPO"), compare="compact"),
-            _field_issue("DESCRICAO_ORIGEM_CONTA", "DESCRIÇÃO origem↔CONTAORDEM", source.get("DESCRIÇÃO"), conta.get("DESCRIÇÃO"), compare="compact"),
-            _field_issue("VALOR_ORIGEM_CONTA", "VALOR origem↔CONTAORDEM", source.get("IMPORTÂNCIA"), conta.get("IMPORTÂNCIA"), compare="amount"),
+            _field_issue("DATA_ORIGEM_CONTA", "DATA MOV.", source.get("DATA MOV."), conta.get("DATA MOV."), compare="date"),
+            _field_issue("TIPO_ORIGEM_CONTA", "TIPO", source.get("TIPO"), conta.get("TIPO"), compare="compact"),
+            _field_issue("DESCRICAO_ORIGEM_CONTA", "DESCRIÇÃO", source.get("DESCRIÇÃO"), conta.get("DESCRIÇÃO"), compare="compact"),
+            _field_issue("VALOR_ORIGEM_CONTA", "IMPORTÂNCIA", source.get("IMPORTÂNCIA"), conta.get("IMPORTÂNCIA"), compare="amount"),
         ):
             if issue:
                 item.issues.append(issue)
@@ -571,10 +595,10 @@ def reconcile_t_extrato(
                 target_value=str(soma.get("DESCRIÇÃO") or ""),
             )
         for issue in (
-            _field_issue("TIPO_CONTA_SOMA", "TIPO CONTAORDEM↔SOMA", conta.get("TIPO"), soma.get("TIPO"), compare="compact"),
+            _field_issue("TIPO_CONTA_SOMA", "TIPO (SOMA)", conta.get("TIPO"), soma.get("TIPO"), compare="compact"),
             desc_conta_soma_issue,
-            _field_issue("VALOR_CONTA_SOMA", "VALOR CONTAORDEM↔SOMA", conta.get("IMPORTÂNCIA"), soma.get("VALOR"), compare="amount"),
-            _field_issue("DATA_CONTA_SOMA", "DATA CONTAORDEM↔SOMA", conta.get("DATA MOV."), soma.get("PAGAMENTO"), compare="date"),
+            _field_issue("VALOR_CONTA_SOMA", "VALOR (SOMA)", conta.get("IMPORTÂNCIA"), soma.get("VALOR"), compare="amount"),
+            _field_issue("DATA_CONTA_SOMA", "DATA MOV. (SOMA)", conta.get("DATA MOV."), soma.get("PAGAMENTO"), compare="date"),
         ):
             if issue:
                 item.issues.append(issue)

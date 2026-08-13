@@ -341,6 +341,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--show-ok", action="store_true", help="Mostra também todos os registos com trilogia OK.")
     parser.add_argument("--show-excluded", action="store_true", help="Mostra os registos excluídos intencionalmente do SOMA.")
     parser.add_argument("--no-warnings", action="store_true", help="Não imprime a secção de avisos em registos conciliados.")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Executa a conciliação sem gravar os resultados na coluna STATUS da Google Sheet.",
+    )
     return parser
 
 
@@ -415,6 +420,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         show_warnings=not args.no_warnings,
     )
 
+    # Escrever os resultados na coluna STATUS da sheet T_EXTRATO
+    if not args.dry_run:
+        updates = [
+            {"row": item.source_row, "STATUS": item.status_label}
+            for item in report.items
+        ]
+        if updates:
+            print("-" * 78)
+            print(f"Gravando coluna STATUS na sheet '{source_sheet}' ({len(updates)} linhas)...")
+            try:
+                sheets.batch_update_rows(source_sheet, updates)
+                print("✅ Gravado com sucesso na Google Sheet!")
+            except Exception as exc:
+                print(f"❌ ERRO AO GRAVAR NA GOOGLE SHEET: {exc}")
+            print("-" * 78)
+    else:
+        print("-" * 78)
+        print("⏭ MODO --dry-run ATIVO: Nenhuma alteração foi gravada na Google Sheet.")
+        print("-" * 78)
+
     critical = Counter(item.category for item in report.items)
     has_problems = any(
         critical[category] > 0
@@ -431,3 +456,4 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

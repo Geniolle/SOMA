@@ -215,10 +215,29 @@ class SheetsClient:
         except ImportError:
             render = None  # type: ignore
 
-        return self._ws(ws).get_all_records(
-            numericise_ignore=["all"],
-            value_render_option=render,
-        )
+        ws_obj = self._ws(ws)
+        try:
+            return ws_obj.get_all_records(
+                numericise_ignore=["all"],
+                value_render_option=render,
+            )
+        except Exception:
+            # Fallback resiliente para planilhas com colunas de cabeçalho duplicadas (ex.: dois STATUS em T_EXTRATO)
+            all_values = ws_obj.get_all_values(value_render_option=render)
+            if not all_values:
+                return []
+            header = [str(x).strip() for x in all_values[0]]
+            records = []
+            for row in all_values[1:]:
+                rec = {}
+                for idx, col_name in enumerate(header):
+                    if not col_name:
+                        continue
+                    val = row[idx] if idx < len(row) else ""
+                    if col_name not in rec or val:
+                        rec[col_name] = val
+                records.append(rec)
+            return records
 
     def read_all_records(self, ws: str) -> List[Dict[str, Any]]:
         return self.get_all_records(ws)
