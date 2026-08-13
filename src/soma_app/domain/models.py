@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import unicodedata
 from dataclasses import dataclass
 from enum import Enum
@@ -8,6 +9,31 @@ from typing import Any, Dict, Iterable
 
 def _strip(s: Any) -> str:
     return ("" if s is None else str(s)).strip()
+
+
+def normalize_document_value(value: Any) -> str:
+    """
+    Normaliza um numero de documento sem perder zeros significativos.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return _strip(value)
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        if value.is_integer():
+            return str(int(value))
+        return _strip(value)
+
+    s = _strip(value)
+    if not s:
+        return ""
+
+    if re.fullmatch(r"[+-]?\d+\.0+", s):
+        return s.split(".", 1)[0]
+
+    return s
 
 
 def _norm_basic(s: str) -> str:
@@ -99,6 +125,7 @@ class ContaOrdemRow:
     id_interno: str
 
     doc_soma: str
+    auditoria: str
     dados_doc: str
     iduser: str
     timestamp: str
@@ -129,6 +156,7 @@ class ContaOrdemRow:
         id_interno = _get_any(raw, ["ID_INTERNO", "ID INTERNO", "IDINTERNO"], default="")
 
         doc_soma = _get_any(raw, ["DOC. SOMA", "DOC SOMA"], default="")
+        auditoria = _get_any(raw, ["AUDITORIA"], default="")
         dados_doc = _get_any(raw, ["DADOS DOC", "DADOS_DOCTO", "DADOS"], default="")
         iduser = _get_any(raw, ["IDUSER", "USER", "USUARIO"], default="")
         timestamp = _get_any(raw, ["TIMESTAMP", "DATAHORA", "DATA HORA"], default="")
@@ -146,6 +174,7 @@ class ContaOrdemRow:
             descricao_soma=descricao_soma,
             id_interno=id_interno,
             doc_soma=doc_soma,
+            auditoria=auditoria,
             dados_doc=dados_doc,
             iduser=iduser,
             timestamp=timestamp,

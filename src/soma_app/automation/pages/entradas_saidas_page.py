@@ -2218,6 +2218,9 @@ class EntradasSaidasPage:
         self._emit(f"Número do documento extraído: {doc}", row=row.row_number, tipo=row.tipo.value)
         return doc
 
+    def search_existing_doc(self, row: ContaOrdemRow) -> str | None:
+        return self._search_doc_lookup_attempt(row)
+
     def _search_doc_id_attempt(self, row: ContaOrdemRow) -> str:
         doc = self._search_doc_lookup_attempt(row)
         if doc is None:
@@ -2239,7 +2242,7 @@ class EntradasSaidasPage:
 
     def precheck_duplicate(self, row: ContaOrdemRow) -> str | None:
         with step(log, "entradas_saidas.precheck_duplicate", row=row.row_number, tipo=row.tipo.value, data=row.data_mov):
-            doc = self._search_doc_lookup_attempt(row)
+            doc = self.search_existing_doc(row)
             if doc is None:
                 self._emit(
                     "Nenhum registro encontrado. Pode seguir com o lançamento.",
@@ -2277,7 +2280,7 @@ class EntradasSaidasPage:
                 return ""
 
     def recover_doc_id(self, row: ContaOrdemRow) -> str | None:
-        return self._search_doc_lookup_attempt(row)
+        return self.search_existing_doc(row)
 
     def create_and_get_doc_id(self, row: ContaOrdemRow) -> str:
         with step(log, "entradas_saidas.create_start", row=row.row_number, tipo=row.tipo.value):

@@ -29,6 +29,7 @@ def _min_row() -> ContaOrdemRow:
         importancia="",
         descricao_soma="",
         doc_soma="",
+        auditoria="",
         dados_doc="",
         iduser="",
         timestamp="",

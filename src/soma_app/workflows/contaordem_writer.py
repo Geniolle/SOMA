@@ -67,6 +67,14 @@ def mark_row_duplicate(
     t.batch_update_cells(updates)
 
 
+def mark_row_auditoria(
+    t: SheetsTable,
+    row_idx: int,
+    auditoria: str,
+) -> None:
+    t.batch_update_cells([(row_idx, "AUDITORIA", auditoria)])
+
+
 def mark_row_error(
     t: SheetsTable,
     row_idx: int,

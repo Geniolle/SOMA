@@ -208,6 +208,19 @@ def test_search_doc_id_attempt_uses_fallback_when_lookup_returns_none(monkeypatc
     assert doc == "SEM_DOC_99"
 
 
+def test_search_existing_doc_reuses_lookup_attempt(monkeypatch):
+    from types import SimpleNamespace
+
+    actions = FakeActions(set())
+    page = _build_page(actions)
+    row = SimpleNamespace(row_number=98, tipo=SimpleNamespace(value="Entrada"))
+    monkeypatch.setattr(page, "_search_doc_lookup_attempt", lambda r: "DOC-EXIST")
+
+    doc = page.search_existing_doc(row)
+
+    assert doc == "DOC-EXIST"
+
+
 def test_save_form_if_present_uses_direct_click_without_long_wait(monkeypatch):
     from types import SimpleNamespace
 
