@@ -80,6 +80,13 @@ class EntradasSaidasAdapter:
             return self.fallback.fetch_dados_doc(doc_id)
         return self.primary.fetch_dados_doc(doc_id)
 
+    def go_back_to_list(self, row: ContaOrdemRow) -> None:
+        if (not self._api_enabled) and self.fallback is not None and hasattr(self.fallback, "go_back_to_list"):
+            self.fallback.go_back_to_list(row)
+            return
+        if hasattr(self.primary, "go_back_to_list"):
+            self.primary.go_back_to_list(row)
+
 
 class TransferenciasAdapter:
     def __init__(self, primary: Any, fallback: Any | None = None):

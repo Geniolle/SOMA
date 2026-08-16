@@ -28,6 +28,7 @@ from soma_app.infra.webdriver_factory import (
     unwrap_webdriver,
 )
 from soma_app.workflows.contaordem_writer import (
+    mark_row_doc_soma,
     mark_row_duplicate,
     mark_row_error,
     mark_row_ok,
@@ -393,6 +394,17 @@ def _process_row(
 
             doc_id = entradas_saidas.create_and_get_doc_id(row_model)
 
+            if not str(doc_id).startswith("SEM_DOC_"):
+                mark_row_doc_soma(table, row_idx, str(doc_id))
+                log_kv(
+                    logger,
+                    "DOC. SOMA gravado antecipadamente na sheet.",
+                    level=logging.INFO,
+                    row=row_idx,
+                    tipo=tipo_txt,
+                    doc=doc_id,
+                )
+
             dados_doc = None
             if str(doc_id).startswith("SEM_DOC_"):
                 dados_doc = None
@@ -401,6 +413,14 @@ def _process_row(
                     dados_doc = entradas_saidas.fetch_dados_doc(str(doc_id))
                 except Exception:
                     dados_doc = None
+
+                try:
+                    go_back = getattr(entradas_saidas, "go_back_to_list", None)
+                    if callable(go_back):
+                        go_back(row_model)
+                except Exception:
+                    logger.exception("Falha ao tentar voltar para a lista após capturar o DOC.")
+
             elapsed_ms = int((time.perf_counter() - row_t0) * 1000)
             mark_row_ok(
                 table,
@@ -457,7 +477,7 @@ def _run_batches(
     iduser: str,
     allow_retry: bool,
     run_caixas_bancos: bool,
-    debug_row: int | None,
+    debug_row: int | None = None,
     entradas_saidas: Any,
     transferencias: Any,
 ) -> RunTotals:

@@ -2251,6 +2251,9 @@ class EntradasSaidasPage:
                 pass
             self._ensure_pesquisa_visivel(row)
 
+    def go_back_to_list(self, row: ContaOrdemRow) -> None:
+        self._go_back_to_list_best_effort(row)
+
     def _search_doc_lookup_attempt(self, row: ContaOrdemRow) -> str | None:
         self._go_back_to_list_best_effort(row)
 
