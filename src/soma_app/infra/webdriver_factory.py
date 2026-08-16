@@ -172,7 +172,14 @@ def create_driver(
     driver = webdriver.Chrome(service=service, options=options)
     
     # === FORÇAR MAXIMIZAÇÃO (Dupla Segurança) ===
-    driver.maximize_window()
+    if not headless_v:
+        try:
+            driver.maximize_window()
+        except Exception:
+            try:
+                driver.set_window_size(1920, 1080)
+            except Exception:
+                pass
 
     # headless downloads via CDP (best effort)
     try:

@@ -183,3 +183,33 @@ def test_debug_step_mode_requires_visible_browser(monkeypatch):
     with pytest.raises(RuntimeError, match="DEBUG_STEP_MODE=true requer HEADLESS=false"):
         create_driver(settings=SimpleNamespace(headless=True), headless=None, downloads_dir="artifacts/downloads")
 
+
+def test_create_driver_headless_skips_maximize(monkeypatch):
+    from soma_app.infra import webdriver_factory
+
+    calls = {"maximize": 0, "size": 0, "cdp": 0}
+
+    class DummyDriver:
+        def maximize_window(self):
+            calls["maximize"] += 1
+
+        def set_window_size(self, width, height):
+            calls["size"] += 1
+
+        def execute_cdp_cmd(self, name, payload):
+            calls["cdp"] += 1
+
+    monkeypatch.setattr(webdriver_factory.webdriver, "Chrome", lambda *args, **kwargs: DummyDriver())
+    monkeypatch.setattr(webdriver_factory, "_build_service", lambda: SimpleNamespace())
+    monkeypatch.setattr(webdriver_factory, "_resolve_downloads_dir", lambda settings=None, downloads_dir=None: "artifacts/downloads")
+    monkeypatch.setattr(webdriver_factory, "_build_options", lambda headless, downloads_dir: SimpleNamespace())
+    monkeypatch.setattr(webdriver_factory, "log_kv", lambda *args, **kwargs: None)
+
+    driver = webdriver_factory.create_driver(
+        settings=SimpleNamespace(headless=True), headless=None, downloads_dir="artifacts/downloads"
+    )
+
+    assert calls["maximize"] == 0
+    assert calls["size"] == 0
+    assert calls["cdp"] == 1
+    assert isinstance(driver, DummyDriver)
