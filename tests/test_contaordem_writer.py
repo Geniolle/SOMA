@@ -155,12 +155,8 @@ def test_batch_update_cells_prefers_direct_range_updates_without_reloading_heade
     table.batch_update_cells([(2, "DOC. SOMA", "DOC-9"), (2, "STATUS", "VALIDADO")])
 
     assert fake.header_reads == 0
-    assert fake.batch_updates == [
-        (
-            "CONTAORDEM",
-            [
-                ("CONTAORDEM!B2", [["DOC-9"]]),
-                ("CONTAORDEM!C2", [["VALIDADO"]]),
-            ],
-        )
+    assert fake.batch_updates == []
+    assert fake.updated_cells == [
+        ("CONTAORDEM", 2, table.col_idx("DOC. SOMA"), "DOC-9"),
+        ("CONTAORDEM", 2, table.col_idx("STATUS"), "VALIDADO"),
     ]

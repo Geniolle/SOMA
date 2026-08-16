@@ -92,6 +92,19 @@ class SheetsTable:
         if not updates:
             return
 
+        # tenta update_cell (singular)
+        fn = getattr(self.sheets, "update_cell", None)
+        if callable(fn):
+            for row_idx, col_name, value in updates:
+                col_idx = self.col_idx(col_name)
+                if not col_idx:
+                    raise RuntimeError(f"Coluna não encontrada no header: {col_name}")
+                try:
+                    fn(ws=self.ws, row=row_idx, col=col_idx, value=value)
+                except TypeError:
+                    fn(self.ws, row_idx, col_idx, value)
+            return
+
         fn = getattr(self.sheets, "batch_update", None)
         if callable(fn):
             ranges_payload = []
@@ -114,22 +127,8 @@ class SheetsTable:
                 except TypeError:
                     pass
             except Exception:
-                # Se o batch update falhar por quota/API, degradamos para updates unitários
-                # sem passar por batch_update_rows, que recalcula header e aumenta leitura.
+                # Se o batch update falhar por quota/API, deixamos cair no erro abaixo.
                 pass
-
-        # tenta update_cell (singular)
-        fn = getattr(self.sheets, "update_cell", None)
-        if callable(fn):
-            for row_idx, col_name, value in updates:
-                col_idx = self.col_idx(col_name)
-                if not col_idx:
-                    raise RuntimeError(f"Coluna não encontrada no header: {col_name}")
-                try:
-                    fn(ws=self.ws, row=row_idx, col=col_idx, value=value)
-                except TypeError:
-                    fn(self.ws, row_idx, col_idx, value)
-            return
 
         raise RuntimeError(
             "SheetsClient: não encontrei método suportado para update (batch_update/update_cell/update_rows). "
