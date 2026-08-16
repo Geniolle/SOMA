@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Teste Automatico: Verificar qual candidato funciona
-Simula o comportamento de wait_any_present sem precisar rodar a app
+Teste manual: listar candidatos de selector de baixa.
 """
 
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
 
 from soma_app.automation.pages.entradas_saidas_page import EntradasSaidasPage
 
 print("\n" + "=" * 80)
-print("TESTE AUTOMATICO DE CANDIDATOS: BTN_INSERIR_BAIXA_CANDIDATES")
+print("TESTE MANUAL DE CANDIDATOS: BTN_INSERIR_BAIXA_CANDIDATES")
 print("=" * 80)
 
 candidates = EntradasSaidasPage.BTN_INSERIR_BAIXA_CANDIDATES
