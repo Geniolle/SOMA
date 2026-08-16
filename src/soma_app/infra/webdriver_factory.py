@@ -12,7 +12,8 @@ from typing import Any, Dict, Iterator, Optional
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.remote.remote_connection import RemoteConnection
+from selenium.webdriver.chromium.remote_connection import ChromiumRemoteConnection
+from selenium.webdriver.remote.client_config import ClientConfig
 
 from soma_app.infra.env import env_bool, env_int
 from soma_app.infra.log_config import ensure_artifacts_dirs
@@ -172,20 +173,38 @@ def create_driver(
     service = _build_service()
 
     log_kv(logger, "WebDriver create start", headless=headless_v, downloads=downloads_v)
-    previous_timeout = None
+    original_init = ChromiumRemoteConnection.__init__
+
+    def patched_init(
+        self,
+        remote_server_addr: str,
+        vendor_prefix: str,
+        browser_name: str,
+        keep_alive: bool = True,
+        ignore_proxy: bool = False,
+        client_config: ClientConfig | None = None,
+    ) -> None:
+        cfg = client_config or ClientConfig(
+            remote_server_addr=remote_server_addr,
+            keep_alive=keep_alive,
+            timeout=http_timeout,
+        )
+        cfg.timeout = http_timeout
+        original_init(
+            self,
+            remote_server_addr=remote_server_addr,
+            vendor_prefix=vendor_prefix,
+            browser_name=browser_name,
+            keep_alive=keep_alive,
+            ignore_proxy=ignore_proxy,
+            client_config=cfg,
+        )
+
+    ChromiumRemoteConnection.__init__ = patched_init
     try:
-        try:
-            previous_timeout = RemoteConnection.get_timeout()
-        except Exception:
-            previous_timeout = None
-        RemoteConnection.set_timeout(http_timeout)
         driver = webdriver.Chrome(service=service, options=options)
     finally:
-        if previous_timeout is not None:
-            try:
-                RemoteConnection.set_timeout(previous_timeout)
-            except Exception:
-                pass
+        ChromiumRemoteConnection.__init__ = original_init
     log_kv(logger, "WebDriver chrome ready", headless=headless_v, downloads=downloads_v)
     
     # === FORÇAR MAXIMIZAÇÃO (Dupla Segurança) ===
