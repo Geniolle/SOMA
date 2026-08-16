@@ -188,6 +188,7 @@ def test_create_driver_headless_skips_maximize(monkeypatch):
     from soma_app.infra import webdriver_factory
 
     calls = {"maximize": 0, "size": 0, "cdp": 0}
+    captured = {"timeouts": []}
 
     class DummyDriver:
         def maximize_window(self):
@@ -199,11 +200,20 @@ def test_create_driver_headless_skips_maximize(monkeypatch):
         def execute_cdp_cmd(self, name, payload):
             calls["cdp"] += 1
 
-    monkeypatch.setattr(webdriver_factory.webdriver, "Chrome", lambda *args, **kwargs: DummyDriver())
+    def fake_chrome(*args, **kwargs):
+        return DummyDriver()
+
+    monkeypatch.setattr(webdriver_factory.webdriver, "Chrome", fake_chrome)
     monkeypatch.setattr(webdriver_factory, "_build_service", lambda: SimpleNamespace())
     monkeypatch.setattr(webdriver_factory, "_resolve_downloads_dir", lambda settings=None, downloads_dir=None: "artifacts/downloads")
     monkeypatch.setattr(webdriver_factory, "_build_options", lambda headless, downloads_dir: SimpleNamespace())
     monkeypatch.setattr(webdriver_factory, "log_kv", lambda *args, **kwargs: None)
+    monkeypatch.setattr(webdriver_factory.RemoteConnection, "get_timeout", lambda: 120)
+    monkeypatch.setattr(
+        webdriver_factory.RemoteConnection,
+        "set_timeout",
+        lambda timeout: captured["timeouts"].append(timeout),
+    )
 
     driver = webdriver_factory.create_driver(
         settings=SimpleNamespace(headless=True), headless=None, downloads_dir="artifacts/downloads"
@@ -212,4 +222,5 @@ def test_create_driver_headless_skips_maximize(monkeypatch):
     assert calls["maximize"] == 0
     assert calls["size"] == 0
     assert calls["cdp"] == 1
+    assert captured["timeouts"] == [300, 120]
     assert isinstance(driver, DummyDriver)

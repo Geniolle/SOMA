@@ -12,8 +12,9 @@ from typing import Any, Dict, Iterator, Optional
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.remote.remote_connection import RemoteConnection
 
-from soma_app.infra.env import env_bool
+from soma_app.infra.env import env_bool, env_int
 from soma_app.infra.log_config import ensure_artifacts_dirs
 from soma_app.infra.trace import log_kv
 
@@ -165,12 +166,26 @@ def create_driver(
     if env_bool("DEBUG_STEP_MODE", default=False) and headless_v:
         raise RuntimeError("DEBUG_STEP_MODE=true requer HEADLESS=false para manter o browser visível.")
     downloads_v = _resolve_downloads_dir(settings, downloads_dir)
+    http_timeout = env_int("SELENIUM_HTTP_TIMEOUT", 300)
 
     options = _build_options(headless=headless_v, downloads_dir=downloads_v)
     service = _build_service()
 
     log_kv(logger, "WebDriver create start", headless=headless_v, downloads=downloads_v)
-    driver = webdriver.Chrome(service=service, options=options)
+    previous_timeout = None
+    try:
+        try:
+            previous_timeout = RemoteConnection.get_timeout()
+        except Exception:
+            previous_timeout = None
+        RemoteConnection.set_timeout(http_timeout)
+        driver = webdriver.Chrome(service=service, options=options)
+    finally:
+        if previous_timeout is not None:
+            try:
+                RemoteConnection.set_timeout(previous_timeout)
+            except Exception:
+                pass
     log_kv(logger, "WebDriver chrome ready", headless=headless_v, downloads=downloads_v)
     
     # === FORÇAR MAXIMIZAÇÃO (Dupla Segurança) ===
