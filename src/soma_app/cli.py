@@ -10,6 +10,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         from soma_app.workflows.audit_conciliacao import main as audit_main
 
         return audit_main()
+    if args and args[0] in {"conciliacao-doc-soma", "--conciliacao-doc-soma"}:
+        from soma_app.workflows.conciliacao_doc_soma import main as doc_soma_main
+
+        return doc_soma_main()
 
     from soma_app.workflows.run_soma import main as run_main
 

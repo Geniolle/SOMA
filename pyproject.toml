@@ -28,6 +28,7 @@ dev = [
 [project.scripts]
 soma-run = "soma_app.workflows.run_soma:main"
 soma-audit-conciliacao = "soma_app.workflows.audit_conciliacao:main"
+soma-conciliacao-doc-soma = "soma_app.workflows.conciliacao_doc_soma:main"
 soma-scheduler = "soma_app.scheduler:main"
 
 [tool.setuptools.packages.find]
