@@ -86,19 +86,19 @@ class EntradasSaidasPage:
     # =========
     BTN_REALIZAR_PAGAMENTO = (By.XPATH, "")
 
-    BTN_INSERIR_PAGAMENTO_SAIDA = (By.XPATH, "/html/body/div[2]/div/div[2]/div/div/form/div[29]/div/div[2]/a")
-    DATA_PAGAMENTO_MODAL = (By.XPATH, "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[1]/div[1]/div/input")
-    FORMA_PAGAMENTO_MODAL = (By.XPATH, "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]/div[1]/div/select")
-    CAIXA_PAGAMENTO_MODAL = (By.XPATH, "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[4]/div[2]/div/select")
-    NUM_DOCUMENTO_MODAL = (By.XPATH, "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]/div[3]/div/input")
-    BTN_SALVAR_PAGAMENTO_MODAL = (By.XPATH, "/html/body/div[2]/div/div[5]/div/div/form/div[3]/button")
+    BTN_INSERIR_PAGAMENTO_SAIDA = (By.XPATH, "//*[@data-target='#inserir' and contains(normalize-space(.), 'Inserir Pagamento')]")
+    DATA_PAGAMENTO_MODAL = (By.XPATH, "//*[@id='inserir']//input[@name='data_pagamento']")
+    FORMA_PAGAMENTO_MODAL = (By.XPATH, "//*[@id='inserir']//select[@name='forma_pagamento']")
+    CAIXA_PAGAMENTO_MODAL = (By.XPATH, "//*[@id='inserir']//select[@name='id_caixa']")
+    NUM_DOCUMENTO_MODAL = (By.XPATH, "//*[@id='inserir']//input[@name='num_documento']")
+    BTN_SALVAR_PAGAMENTO_MODAL = (By.XPATH, "//*[@id='inserir']//button[@id='botao_pagamento' or contains(normalize-space(.), 'Salvar')]")
 
-    BTN_INSERIR_BAIXA = (By.XPATH, "/html/body/div[2]/div/div[3]/div/div/table/tbody/tr[1]/td[6]/button")
+    BTN_INSERIR_BAIXA = (By.XPATH, "//*[@data-target='#inserirBaixa' or contains(@data-target, 'inserirBaixa')]")
     BTN_INSERIR_BAIXA_CANDIDATES = [
-        (By.XPATH, "//button[@id and contains(@data-target, 'inserirBaixa')]"),
-        (By.XPATH, "//button[contains(., 'Inserir Baixa')]"),
-        (By.XPATH, "//a[contains(@data-target, 'inserir') and contains(., 'Inserir')]"),
-        (By.CSS_SELECTOR, "button[data-toggle='modal']"),
+        (By.XPATH, "//*[@data-target='#inserirBaixa' or contains(@data-target, 'inserirBaixa')]"),
+        (By.XPATH, "//button[not(contains(@class, 'exc_baixa')) and contains(normalize-space(.), 'Inserir Baixa')]"),
+        (By.XPATH, "//a[not(contains(@class, 'exc_baixa')) and contains(normalize-space(.), 'Inserir Baixa')]"),
+        (By.CSS_SELECTOR, "button[data-target='#inserirBaixa'], a[data-target='#inserirBaixa']"),
     ]
 
     # Baixa - campo de data dentro do modal #inserirBaixa (visível)
@@ -137,8 +137,8 @@ class EntradasSaidasPage:
     POPUP_CLICK_CANDIDATES = []
 
     # Fallbacks absolutos (não use como primeiro candidato)
-    DATA_BAIXA = (By.XPATH, "/html/body/div[2]/div/div[4]/div/div/form/div[2]/div/div/div[1]/div/div/input")
-    BTN_SALVAR_BAIXA = (By.XPATH, "/html/body/div[2]/div/div[4]/div/div/form/div[3]/button")
+    DATA_BAIXA = (By.XPATH, "//*[@id='inserirBaixa']//input[@name='data_baixa']")
+    BTN_SALVAR_BAIXA = (By.XPATH, "//*[@id='inserirBaixa']//button[@id='botao_baixa' or contains(normalize-space(.), 'Salvar Baixa')]")
 
     # =========
     # PESQUISA DOC SOMA
@@ -736,11 +736,43 @@ class EntradasSaidasPage:
         except Exception:
             pass
 
+    def _current_swal_text(self) -> str:
+        try:
+            raw = self.a.driver.execute_script(
+                """
+                const title = document.querySelector('.swal2-title');
+                const content = document.querySelector('.swal2-content');
+                const confirm = document.querySelector('.swal2-confirm');
+                return [
+                    title ? title.textContent : '',
+                    content ? content.textContent : '',
+                    confirm ? confirm.textContent : ''
+                ].join(' | ');
+                """
+            )
+            return self._norm(raw or "")
+        except Exception:
+            return ""
+
     def _dismiss_overlays(self) -> None:
         try:
             if self.a.exists(self.OK_ALERT, timeout_seconds=1):
+                swal_text = self._current_swal_text()
+                destructive_markers = (
+                    "excluir",
+                    "cancelar baixa",
+                    "remover",
+                    "apagar",
+                    "delet",
+                )
+                if any(marker in swal_text for marker in destructive_markers):
+                    msg = f"SweetAlert destrutivo detectado durante cleanup: {swal_text}"
+                    self._emit(msg, level=logging.WARNING)
+                    raise RuntimeError(msg)
                 self.a.click_js(self.OK_ALERT)
                 self._emit("Botão 'OK' clicado com sucesso!")
+        except RuntimeError:
+            raise
         except Exception:
             pass
 
@@ -752,6 +784,17 @@ class EntradasSaidasPage:
                     self._emit("Aviso: O modal SweetAlert ainda está visível após o tempo de espera.", level=logging.WARNING)
         except Exception:
             pass
+
+    def _baixa_ja_registrada(self) -> bool:
+        try:
+            if self.a.exists((By.CSS_SELECTOR, ".exc_baixa"), timeout_seconds=1):
+                return True
+        except Exception:
+            pass
+        try:
+            return "cancelar baixa" in self._norm(self.a.driver.page_source)
+        except Exception:
+            return False
 
     def _click_menu_entradas_saidas(self, timeout_seconds: int = 60) -> None:
         loc = self.a.wait_any_present(self.MENU_ENTRADAS_SAIDAS_CANDIDATES, timeout_seconds=timeout_seconds)
@@ -1804,6 +1847,14 @@ class EntradasSaidasPage:
 
     def _inserir_baixa_saida(self, row: ContaOrdemRow) -> None:
         with step(log, "entradas_saidas.baixa", row=row.row_number, tipo=row.tipo.value, data=row.data_mov):
+            if self._baixa_ja_registrada():
+                self._emit(
+                    "[SAIDA][BAIXA] Baixa já registrada na tela atual. Vou seguir sem inserir nova baixa.",
+                    row=row.row_number,
+                    tipo=row.tipo.value,
+                )
+                return
+
             self._debug_checkpoint(
                 row=row,
                 stage="SAIDA.BAIXA.INSERIR",
@@ -1817,14 +1868,29 @@ class EntradasSaidasPage:
                     "Pressione ENTER para abrir Inserir Baixa.",
                 ],
             )
-            self._click_fixed_visible(
-                self.BTN_INSERIR_BAIXA,
-                row=row,
-                stage="entradas_saidas.baixa.inserir",
-                element_name="BTN_INSERIR_BAIXA",
-                timeout_seconds=30,
-            )
+            try:
+                self.a.click_any_visible(self.BTN_INSERIR_BAIXA_CANDIDATES, timeout_seconds=3)
+            except TimeoutException:
+                if self._baixa_ja_registrada():
+                    self._emit(
+                        "[SAIDA][BAIXA] Não há botão de inserção; baixa já consta na tela. Vou seguir adiante.",
+                        row=row.row_number,
+                        tipo=row.tipo.value,
+                    )
+                    return
+                raise
             self._emit("[SAIDA][BAIXA] Inserir Baixa clicado", row=row.row_number, tipo=row.tipo.value)
+            try:
+                self.a.wait_visible((By.ID, "inserirBaixa"), timeout_seconds=10)
+            except TimeoutException as exc:
+                self._raise_fixed_xpath_error(
+                    row=row,
+                    stage="entradas_saidas.baixa.inserir",
+                    element_name="BTN_INSERIR_BAIXA",
+                    locator=self.BTN_INSERIR_BAIXA_CANDIDATES[0],
+                    error=exc,
+                    cause="MODAL_BAIXA_NAO_ABRIU",
+                )
             self._debug_checkpoint(
                 row=row,
                 stage="SAIDA.BAIXA.INSERIR",
@@ -1853,14 +1919,14 @@ class EntradasSaidasPage:
                     "Pressione ENTER para preencher a Data da Baixa.",
                 ],
             )
-            data_baixa = self._type_fixed_visible(
-                self.DATA_BAIXA,
-                row.data_mov,
-                row=row,
-                stage="entradas_saidas.baixa.data",
-                element_name="DATA_BAIXA",
+            data_baixa_el = self.a.wait_any_visible_element(
+                self.DATA_BAIXA_CANDIDATES,
                 timeout_seconds=30,
+                log_timeout=False,
             )
+            data_baixa_el.clear()
+            data_baixa_el.send_keys(row.data_mov)
+            data_baixa = (data_baixa_el.get_attribute("value") or "").strip() or row.data_mov
             if not self._match_ok(row.data_mov, data_baixa):
                 raise RuntimeError(
                     f"DATA_BAIXA não confirmou preenchimento. esperado='{row.data_mov}' | atual='{data_baixa}'"
@@ -1895,7 +1961,7 @@ class EntradasSaidasPage:
                 ],
             )
             self._click_fixed_visible(
-                self.BTN_SALVAR_BAIXA,
+                self.BTN_SALVAR_BAIXA_CANDIDATES[0],
                 row=row,
                 stage="entradas_saidas.baixa.salvar",
                 element_name="BTN_SALVAR_BAIXA",
@@ -1916,13 +1982,13 @@ class EntradasSaidasPage:
                 ],
             )
             try:
-                self.a.wait_invisible(self.BTN_SALVAR_BAIXA, timeout_seconds=20)
+                self.a.wait_invisible((By.ID, "inserirBaixa"), timeout_seconds=20)
             except TimeoutException as exc:
                 self._raise_fixed_xpath_error(
                     row=row,
                     stage="entradas_saidas.baixa.salvar",
                     element_name="BTN_SALVAR_BAIXA",
-                    locator=self.BTN_SALVAR_BAIXA,
+                    locator=self.BTN_SALVAR_BAIXA_CANDIDATES[0],
                     error=exc,
                     cause="BAIXA_NAO_CONCLUIDA",
                 )
@@ -2284,7 +2350,7 @@ class EntradasSaidasPage:
             try:
                 cell = self.a.wait_visible(self.DADOS_DOC_CELL, timeout_seconds=5)
                 txt = (cell.text or "").strip()
-                self._emit(f"Número do documento extraído: {txt}")
+                self._emit(f"Texto do DADOS DOC extraído: {txt}")
                 return txt
             except TimeoutException:
                 self._emit(

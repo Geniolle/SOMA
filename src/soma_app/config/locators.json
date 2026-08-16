@@ -90,27 +90,28 @@
     "OK_ALERT": { "by": "css selector", "value": ".swal2-confirm" },
     "SWAL_CONTAINER": { "by": "class_name", "value": "swal2-container" },
     "BTN_REALIZAR_PAGAMENTO": "/html/body/ul/li/div/div[2]/button[1]",
-    "BTN_INSERIR_PAGAMENTO_SAIDA": "/html/body/div[2]/div/div[2]/div/div/form/div[29]/div/div[2]/a",
-    "DATA_PAGAMENTO_MODAL": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[1]/div[1]/div/input",
-    "FORMA_PAGAMENTO_MODAL": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]/div[1]/div/select",
-    "CAIXA_PAGAMENTO_MODAL": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[4]/div[2]/div/select",
-    "NUM_DOCUMENTO_MODAL": "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]/div[3]/div/input",
-    "BTN_SALVAR_PAGAMENTO_MODAL": "/html/body/div[2]/div/div[5]/div/div/form/div[3]/button",
+    "BTN_INSERIR_PAGAMENTO_SAIDA": "//*[@data-target='#inserir' and contains(normalize-space(.), 'Inserir Pagamento')]",
+    "DATA_PAGAMENTO_MODAL": "//*[@id='inserir']//input[@name='data_pagamento']",
+    "FORMA_PAGAMENTO_MODAL": "//*[@id='inserir']//select[@name='forma_pagamento']",
+    "CAIXA_PAGAMENTO_MODAL": "//*[@id='inserir']//select[@name='id_caixa']",
+    "NUM_DOCUMENTO_MODAL": "//*[@id='inserir']//input[@name='num_documento']",
+    "BTN_SALVAR_PAGAMENTO_MODAL": "//*[@id='inserir']//button[@id='botao_pagamento' or contains(normalize-space(.), 'Salvar')]",
     "BTN_INSERIR_BAIXA_CANDIDATES": [
-      "//a[@class='btn btn-info btn-block bnt_inserir'][@data-target='#inserir']",
-      "//a[contains(@class, 'bnt_inserir') and contains(., 'Inserir')]",
-      "//a[@data-target='#inserir' and contains(., 'Inserir')]",
-      "//div[@class='form-group  bnt_inserir']//a[@class='btn btn-info btn-block bnt_inserir']",
-      "//a[contains(., 'Inserir Pagamento')]",
-      "//table//button[contains(@title,'Inserir') or contains(.,'Inserir')]"
+      "//*[@data-target='#inserirBaixa' or contains(@data-target, 'inserirBaixa')]",
+      "//button[not(contains(@class, 'exc_baixa')) and contains(normalize-space(.), 'Inserir Baixa')]",
+      "//a[not(contains(@class, 'exc_baixa')) and contains(normalize-space(.), 'Inserir Baixa')]",
+      {
+        "by": "css selector",
+        "value": "button[data-target='#inserirBaixa'], a[data-target='#inserirBaixa']"
+      }
     ],
-    "BTN_INSERIR_BAIXA": "/html/body/div[2]/div/div[3]/div/div/table/tbody/tr[1]/td[6]/button",
-    "DATA_BAIXA": "/html/body/div[2]/div/div[4]/div/div/form/div[2]/div/div/div[1]/div/div/input",
+    "BTN_INSERIR_BAIXA": "//*[@data-target='#inserirBaixa' or contains(@data-target, 'inserirBaixa')]",
+    "DATA_BAIXA": "//*[@id='inserirBaixa']//input[@name='data_baixa']",
     "POPUP_CLICK_CANDIDATES": [
       "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]",
       "/html/body/div[2]/div/div[5]/div/div/form/div[3]"
     ],
-    "BTN_SALVAR_BAIXA": "/html/body/div[2]/div/div[4]/div/div/form/div[3]/button",
+    "BTN_SALVAR_BAIXA": "//*[@id='inserirBaixa']//button[@id='botao_baixa' or contains(normalize-space(.), 'Salvar Baixa')]",
     "PESQ_DESCRICAO": "/html/body/div[2]/div/div[3]/div/div/form/div[3]/div/input",
     "RADIO_PERIODO": "/html/body/div[2]/div/div[3]/div/div/form/div[7]/div/div/input",
     "RADIO_DATA_PAGAMENTO": "/html/body/div[2]/div/div[3]/div/div/form/div[8]/div/div[2]/input",

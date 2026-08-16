@@ -583,6 +583,7 @@ def main() -> int:
     headless = env_bool("HEADLESS", True)
     allow_retry = env_bool("ALLOW_RETRY_ERROR", False)
     iduser = (env_str("IDUSER", "USERJOB") or "USERJOB").strip() or "USERJOB"
+    keep_browser_open = env_bool("KEEP_BROWSER_OPEN", default=env_bool("DEBUG_STEP_MODE", False))
 
     backend_mode = env_str("SOMA_BACKEND", "selenium").lower()
     api_first = backend_mode == "api"
@@ -648,8 +649,13 @@ def main() -> int:
             except Exception:
                 pass
             try:
-                if state.bundle is not None:
+                if state.bundle is not None and not keep_browser_open:
                     state.bundle.quit()
+                elif state.bundle is not None:
+                    logger.warning(
+                        "Browser mantido aberto ao final da execucao por KEEP_BROWSER_OPEN=true "
+                        "ou DEBUG_STEP_MODE=true."
+                    )
             except Exception:
                 pass
 
