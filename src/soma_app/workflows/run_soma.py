@@ -28,7 +28,6 @@ from soma_app.infra.webdriver_factory import (
     unwrap_webdriver,
 )
 from soma_app.workflows.contaordem_writer import (
-    mark_row_doc_soma,
     mark_row_duplicate,
     mark_row_error,
     mark_row_ok,
@@ -395,7 +394,12 @@ def _process_row(
             doc_id = entradas_saidas.create_and_get_doc_id(row_model)
 
             if not str(doc_id).startswith("SEM_DOC_"):
-                mark_row_doc_soma(table, row_idx, str(doc_id))
+                mark_row_ok(
+                    table,
+                    row_idx,
+                    str(doc_id),
+                    iduser,
+                )
                 log_kv(
                     logger,
                     "DOC. SOMA gravado antecipadamente na sheet.",
