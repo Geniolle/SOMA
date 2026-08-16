@@ -3,12 +3,14 @@ import json
 import sys
 from pathlib import Path
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
 # Force UTF-8 output
 if sys.stdout.encoding != 'utf-8':
     import io
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
-diagnostics_dir = Path("artifacts/diagnostics")
+diagnostics_dir = REPO_ROOT / "artifacts/diagnostics"
 if not diagnostics_dir.exists():
     print(f"Erro: {diagnostics_dir} não existe")
     sys.exit(1)

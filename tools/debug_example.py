@@ -4,7 +4,7 @@ Exemplo de como usar o sistema de debug interativo do SOMA.
 
 Para testar:
 1. Ativar: DEBUG_SELECTOR_INTERACTIVE=true no deploy/.env
-2. Executar: python DEBUG_EXAMPLE.py
+2. Executar: python tools/debug_example.py
 3. Pressionar ENTER em cada pausa para acompanhar
 """
 
@@ -13,7 +13,9 @@ import sys
 from pathlib import Path
 
 # Setup paths
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT / "src"))
+os.chdir(REPO_ROOT)
 
 from soma_app.infra.env import env_bool
 from soma_app.infra.log_config import configure_logging
@@ -124,7 +126,7 @@ def main():
                         print(f"   {line.rstrip()}")
 
         print(f"\n📁 Artifacts:")
-        artifacts = Path("artifacts")
+        artifacts = REPO_ROOT / "artifacts"
         if artifacts.exists():
             screenshots = list(artifacts.glob("screenshots/*.png"))
             if screenshots:

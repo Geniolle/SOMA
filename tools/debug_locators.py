@@ -4,14 +4,15 @@ Script de Debug: Verificar se locators estão sendo carregados corretamente.
 
 Para usar no VSCode:
 1. Abrir terminal integrado (Ctrl+`)
-2. Executar: python debug_locators.py
+2. Executar: python tools/debug_locators.py
 3. Adicionar breakpoint se necessário
 """
 
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from soma_app.automation.actions import Actions, ActionConfig
 from soma_app.automation.pages.entradas_saidas_page import EntradasSaidasPage
@@ -72,9 +73,9 @@ except Exception as e:
 
 # 4. Informações úteis para debug
 print("\n4️⃣ Informações úteis para debug:")
-print(f"   • Arquivo de locators: {Path('src/soma_app/config/locators.json')}")
-print(f"   • Classe: {Path('src/soma_app/automation/pages/entradas_saidas_page.py')}")
-print(f"   • Arquivo de config: {Path('src/soma_app/config/locators.py')}")
+print(f"   • Arquivo de locators: {REPO_ROOT / 'src/soma_app/config/locators.json'}")
+print(f"   • Classe: {REPO_ROOT / 'src/soma_app/automation/pages/entradas_saidas_page.py'}")
+print(f"   • Arquivo de config: {REPO_ROOT / 'src/soma_app/config/locators.py'}")
 
 print("\n" + "=" * 80)
 print("✅ Debug concluído!")

@@ -13,10 +13,13 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from typing import List, Tuple
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
 
 class LogManager:
     def __init__(self, log_dir: str = "logs", days_to_keep: int = 30, max_size_mb: int = 1024):
-        self.log_dir = Path(log_dir)
+        log_path = Path(log_dir)
+        self.log_dir = log_path if log_path.is_absolute() else REPO_ROOT / log_path
         self.days_to_keep = days_to_keep
         self.max_size_bytes = max_size_mb * 1024 * 1024
         self.backup_suffix = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -212,7 +215,7 @@ def main():
     )
     parser.add_argument(
         "-d", "--dir",
-        default="logs",
+        default=str(REPO_ROOT / "logs"),
         help="Diretório de logs (padrão: logs)"
     )
     parser.add_argument(

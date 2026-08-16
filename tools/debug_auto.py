@@ -10,8 +10,9 @@ import json
 from pathlib import Path
 
 # Setup paths
-sys.path.insert(0, str(Path(__file__).parent / "src"))
-os.chdir(Path(__file__).parent)
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT / "src"))
+os.chdir(REPO_ROOT)
 
 from selenium.webdriver.common.by import By
 
@@ -21,7 +22,7 @@ print("=" * 80)
 
 # 1. Carregar locators.json
 print("\n[1] Carregando locators.json...")
-locators_path = Path("src/soma_app/config/locators.json")
+locators_path = REPO_ROOT / "src/soma_app/config/locators.json"
 with open(locators_path, "r", encoding="utf-8") as f:
     data = json.load(f)
 
