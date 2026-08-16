@@ -46,6 +46,7 @@ Seletores de Page Objects (`automation/pages/*_page.py`) podem ser sobrescritos 
 
 - `deploy/.env`, `deploy/credenciais.json`, `chave.key` (já no `.gitignore`; confirmar antes de qualquer `git add`).
 - Deploy em produção é via SSH manual (`ssh -i chave.key ubuntu@<host>` + `git reset --hard origin/main`) — não há CI/CD automatizado. Qualquer sugestão de deploy deve ser confirmada explicitamente com o usuário antes de executar.
+- Host correto do projeto SOMA: `ssh -i chave.key ubuntu@132.145.57.133`, com checkout em `~/soma-automation/SOMA`.
 
 ## Ao propor refatorações
 
