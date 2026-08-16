@@ -169,14 +169,18 @@ def create_driver(
     options = _build_options(headless=headless_v, downloads_dir=downloads_v)
     service = _build_service()
 
+    log_kv(logger, "WebDriver create start", headless=headless_v, downloads=downloads_v)
     driver = webdriver.Chrome(service=service, options=options)
+    log_kv(logger, "WebDriver chrome ready", headless=headless_v, downloads=downloads_v)
     
     # === FORÇAR MAXIMIZAÇÃO (Dupla Segurança) ===
     if not headless_v:
         try:
+            logger.info("WebDriver maximize best-effort")
             driver.maximize_window()
         except Exception:
             try:
+                logger.info("WebDriver maximize falhou; aplicando set_window_size")
                 driver.set_window_size(1920, 1080)
             except Exception:
                 pass
