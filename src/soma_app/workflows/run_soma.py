@@ -551,7 +551,14 @@ def _run_batches(
         batch += 1
         with step(logger, "run.preprocess", run_id=run_id, batch=batch):
             sheets = SheetsClient(settings)
-            result = preprocess_contaordem(sheets, ws=ws, run_id=run_id, batch=batch, debug_row=debug_row)
+            result = preprocess_contaordem(
+                sheets,
+                ws=ws,
+                run_id=run_id,
+                batch=batch,
+                debug_row=debug_row,
+                exclude_rows=sorted(attempted_rows),
+            )
         legacy_report.preprocess_summary(result.eligible_total, len(result.workset))
 
         if not result.workset:

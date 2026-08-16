@@ -137,3 +137,24 @@ def test_debug_row_forces_selection_even_when_no_open_items():
 
     assert len(result.workset) == 1
     assert int(result.workset[0]["row"]) == 2
+
+
+def test_excluded_rows_are_not_relocked_in_followup_preprocess():
+    header = ["TIPO", "DOC. SOMA", "STATUS"]
+    records = [
+        {"TIPO": "Entrada", "DOC. SOMA": "", "STATUS": ""},
+    ]
+    sheets = FakeSheetsClient(header=header, records=records)
+
+    result = preprocess_contaordem(
+        sheets,
+        ws="CONTAORDEM",
+        run_id="test",
+        batch=2,
+        batch_size=1,
+        exclude_rows=[2],
+    )
+
+    assert len(result.workset) == 0
+    assert result.eligible_total == 0
+    assert result.newly_locked == 0

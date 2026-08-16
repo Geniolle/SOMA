@@ -220,6 +220,7 @@ def preprocess_contaordem(
     batch: int,
     batch_size: Optional[int] = None,
     debug_row: Optional[int] = None,
+    exclude_rows: Optional[Sequence[int]] = None,
     doc_col: str = DOC_COL_DEFAULT,
     tipo_col: str = TIPO_COL_DEFAULT,
     status_col: str = STATUS_COL_DEFAULT,
@@ -240,6 +241,7 @@ def preprocess_contaordem(
     - locka APENAS o workset que ainda não está lockado (doc_col = 'Em processamento')
     """
     bsz = batch_size or env_int("BATCH_SIZE", 20)
+    excluded_rows = {int(r) for r in (exclude_rows or ())}
 
     t = SheetsTable(sheets, ws)
     t.load()
@@ -257,6 +259,9 @@ def preprocess_contaordem(
     candidates_transfer: List[Dict[str, Any]] = []
 
     for r in rows:
+        row_idx = int(r.get("row", 0))
+        if row_idx in excluded_rows:
+            continue
         parsed += 1
         doc = _norm(r.get(doc_col))
         tipo = _norm_tipo(r.get(tipo_col))

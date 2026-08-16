@@ -64,6 +64,13 @@ def test_run_batches_processes_workset_once_and_stops_via_attempted_rows(monkeyp
 
     entradas_saidas = FakeEntradasSaidas(doc_id="DOC-1")
     transferencias = FakeTransferencias()
+    post_process_calls = []
+
+    monkeypatch.setattr(
+        run_soma_module,
+        "_run_post_processes",
+        lambda **kwargs: post_process_calls.append(kwargs),
+    )
 
     totals = run_soma_module._run_batches(
         settings=None,
@@ -87,13 +94,14 @@ def test_run_batches_processes_workset_once_and_stops_via_attempted_rows(monkeyp
     assert len(totals.row_times_ms) == 1
     assert len(entradas_saidas.precheck_calls) == 1
     assert len(entradas_saidas.created) == 1
+    assert len(post_process_calls) == 1
 
 
 def test_run_batches_counts_errors_without_stopping(monkeypatch):
-    header = ["TIPO", "DOC. SOMA", "STATUS"]
+    header = ["TIPO", "DOC. SOMA", "STATUS", "IDUSER", "TIMESTAMP"]
     records = [
-        {"TIPO": "Entrada", "DOC. SOMA": "", "STATUS": ""},
-        {"TIPO": "Transferência", "DOC. SOMA": "", "STATUS": ""},
+        {"TIPO": "Entrada", "DOC. SOMA": "", "STATUS": "", "IDUSER": "", "TIMESTAMP": ""},
+        {"TIPO": "Transferência", "DOC. SOMA": "", "STATUS": "", "IDUSER": "", "TIMESTAMP": ""},
     ]
     fake_sheets = FakeSheetsClient(header, records)
     monkeypatch.setattr(run_soma_module, "SheetsClient", lambda settings: fake_sheets)
@@ -104,6 +112,15 @@ def test_run_batches_counts_errors_without_stopping(monkeypatch):
     class BoomEntradasSaidas(FakeEntradasSaidas):
         def create_and_get_doc_id(self, row):
             raise RuntimeError("falha ao criar doc")
+
+    class OkTransferencias(FakeTransferencias):
+        def __init__(self, doc_id: str = "DOC-T2"):
+            self.doc_id = doc_id
+            self.calls = []
+
+        def run(self, row):
+            self.calls.append(row)
+            return self.doc_id
 
     totals = run_soma_module._run_batches(
         settings=None,
@@ -117,9 +134,10 @@ def test_run_batches_counts_errors_without_stopping(monkeypatch):
         allow_retry=False,
         run_caixas_bancos=False,
         entradas_saidas=BoomEntradasSaidas(),
-        transferencias=FakeTransferencias(),
+        transferencias=OkTransferencias(doc_id="DOC-T2"),
     )
 
-    assert totals.processed == 1
+    assert totals.processed == 2
     assert totals.err == 1
-    assert totals.ok == 0
+    assert totals.ok == 1
+    assert totals.transfer == 1
