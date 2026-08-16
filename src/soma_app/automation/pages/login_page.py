@@ -39,18 +39,12 @@ class LoginPage:
 
         with step(log, "login.wait_form_disappear"):
             try:
-                self.a.wait_invisible(self.EMAIL, timeout_seconds=45)
+                self.a.wait_any_present(self.SOMA_BUTTON_CANDIDATES, timeout_seconds=10)
             except Exception:
-                p = self.a.screenshot("login_submit_no_redirect")
-                log_kv(
-                    log,
-                    "Login não avançou (form ainda visível).",
-                    level=logging.ERROR,
-                    url=self.a.driver.current_url,
-                    title=self.a.driver.title,
-                    screenshot=p,
+                log.debug(
+                    "Portal ainda a estabilizar apos submit; seguindo para a etapa de abertura do SOMA.",
+                    extra={"url": self.a.driver.current_url, "title": self.a.driver.title},
                 )
-                raise RuntimeError("Login não avançou (form ainda visível).")
 
         with step(log, "login.open_soma_app"):
             self.open_soma_app()
@@ -64,7 +58,6 @@ class LoginPage:
             self.open_soma_app()
 
     def open_soma_app(self) -> None:
-        # garante estar no portal (quando necessário)
         with step(log, "soma.portal_open", url=self.settings.site_login_url):
             try:
                 self.a.driver.get(self.settings.site_login_url)
@@ -75,10 +68,20 @@ class LoginPage:
 
         with step(log, "soma.find_button"):
             try:
-                winner = self.a.wait_any_present(self.SOMA_BUTTON_CANDIDATES, timeout_seconds=max(30, self.settings.timeout_seconds))
+                winner = self.a.wait_any_present(
+                    self.SOMA_BUTTON_CANDIDATES,
+                    timeout_seconds=max(30, self.settings.timeout_seconds),
+                )
             except Exception:
                 p = self.a.screenshot("soma_button_not_found")
-                log_kv(log, "Botão SOMA não encontrado.", level=logging.ERROR, url=self.a.driver.current_url, title=self.a.driver.title, screenshot=p)
+                log_kv(
+                    log,
+                    "Botao SOMA nao encontrado.",
+                    level=logging.ERROR,
+                    url=self.a.driver.current_url,
+                    title=self.a.driver.title,
+                    screenshot=p,
+                )
                 raise
 
         with step(log, "soma.click_button", locator=str(winner)):
@@ -96,5 +99,12 @@ class LoginPage:
                 self.a.wait_visible(self.SOMA_READY, timeout_seconds=max(60, self.settings.timeout_seconds))
             except TimeoutException:
                 p = self.a.screenshot("soma_not_ready")
-                log_kv(log, "SOMA não carregou a tempo.", level=logging.ERROR, url=self.a.driver.current_url, title=self.a.driver.title, screenshot=p)
-                raise RuntimeError("SOMA não carregou (Entradas/saídas não apareceu).")
+                log_kv(
+                    log,
+                    "SOMA nao carregou a tempo.",
+                    level=logging.ERROR,
+                    url=self.a.driver.current_url,
+                    title=self.a.driver.title,
+                    screenshot=p,
+                )
+                raise RuntimeError("SOMA nao carregou (Entradas/saidas nao apareceu).")
