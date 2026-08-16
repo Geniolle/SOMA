@@ -117,3 +117,23 @@ def test_eligible_total_counts_all_docs_available_before_batch_cut():
 
     assert result.eligible_total == 3
     assert len(result.workset) == 2
+
+
+def test_debug_row_forces_selection_even_when_no_open_items():
+    header = ["TIPO", "DOC. SOMA", "STATUS"]
+    records = [
+        {"TIPO": "Entrada", "DOC. SOMA": "12345", "STATUS": ""},
+    ]
+    sheets = FakeSheetsClient(header=header, records=records)
+
+    result = preprocess_contaordem(
+        sheets,
+        ws="CONTAORDEM",
+        run_id="test",
+        batch=1,
+        batch_size=5,
+        debug_row=2,
+    )
+
+    assert len(result.workset) == 1
+    assert int(result.workset[0]["row"]) == 2

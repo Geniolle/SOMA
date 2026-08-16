@@ -11,7 +11,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 from soma_app.automation.actions import Actions
 from soma_app.config.locators import apply_locator_overrides
-from soma_app.domain.models import ContaOrdemRow
+from soma_app.domain.models import ContaOrdemRow, format_amount_for_input
 from soma_app.infra.trace import log_kv, step
 
 log = logging.getLogger("soma_app.pages.transferencias")
@@ -152,7 +152,7 @@ class TransferenciasPage:
 
         with step(log, "transfer.fill", row=row.row_number):
             self._select2_choose_verified(self.CAIXA_SAIDA, row.caixa_saida, row=row, field="CAIXA SAÍDA")
-            self.a.type(self.VALOR, str(row.importancia))
+            self.a.type(self.VALOR, format_amount_for_input(row.importancia))
             time.sleep(0.5)
             self._select2_choose_verified(self.CAIXA_ENTRADA, row.caixa, row=row, field="CAIXA ENTRADA")
             self.a.type(self.DATA, row.data_mov)

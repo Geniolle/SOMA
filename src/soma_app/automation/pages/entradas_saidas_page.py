@@ -13,7 +13,7 @@ from selenium.webdriver.support.ui import Select
 from soma_app.automation.actions import Actions
 from soma_app.automation.debug_session import GuidedDebugSession
 from soma_app.config.locators import apply_locator_overrides
-from soma_app.domain.models import ContaOrdemRow, TipoMovimento
+from soma_app.domain.models import ContaOrdemRow, TipoMovimento, format_amount_for_input
 from soma_app.infra.trace import log_kv, step
 
 log = logging.getLogger("soma_app.pages.entradas_saidas")
@@ -991,12 +991,28 @@ class EntradasSaidasPage:
                 ],
             )
         with step(log, "entradas_saidas.fill.valor", row=row.row_number, tipo=row.tipo.value, field="VALOR"):
-            self.a.type(self.VALOR, str(row.importancia))
+            valor_input = format_amount_for_input(row.importancia)
+            self.a.type(self.VALOR, valor_input)
+            if row.tipo == TipoMovimento.SAIDA:
+                self._debug_checkpoint(
+                    row=row,
+                    stage="SAIDA.FORM.VALOR",
+                    phase="AFTER",
+                    action="INPUT",
+                    element_name="VALOR",
+                    locator=self.VALOR,
+                    value=row.importancia,
+                    instructions=[
+                        "Confirme que o valor já ficou escrito no campo.",
+                        "Verifique se o browser mostra 16,2 ou 1,62 antes de avançar.",
+                        "Pressione ENTER para continuar quando terminar a inspeção.",
+                    ],
+                )
             try:
                 self.a.driver.find_element(*self.VALOR).send_keys(Keys.ENTER)
             except Exception:
                 pass
-            v = self._input_value(self.VALOR) or str(row.importancia)
+            v = self._input_value(self.VALOR) or valor_input or str(row.importancia)
             self._emit(f"Valor preenchido com sucesso: {v}", row=row.row_number, tipo=row.tipo.value)
 
         with step(log, "entradas_saidas.fill.obs", row=row.row_number, tipo=row.tipo.value, field="OBS"):

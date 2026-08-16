@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from decimal import Decimal, InvalidOperation
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, Iterable
@@ -34,6 +35,39 @@ def normalize_document_value(value: Any) -> str:
         return s.split(".", 1)[0]
 
     return s
+
+
+def format_amount_for_input(value: Any) -> str:
+    """
+    Formata um montante para input monetario com 2 casas decimais e virgula.
+
+    Ex.: "16,2" -> "16,20"
+    """
+    if value is None:
+        return ""
+
+    if isinstance(value, Decimal):
+        amount = value
+    else:
+        text = _strip(value)
+        if not text:
+            return ""
+
+        text = text.replace(" ", "")
+        if "," in text and "." in text:
+            if text.rfind(",") > text.rfind("."):
+                text = text.replace(".", "").replace(",", ".")
+            else:
+                text = text.replace(",", "")
+        else:
+            text = text.replace(",", ".")
+
+        try:
+            amount = Decimal(text)
+        except (InvalidOperation, ValueError):
+            return _strip(value)
+
+    return format(amount.quantize(Decimal("0.01")), "f").replace(".", ",")
 
 
 def _norm_basic(s: str) -> str:

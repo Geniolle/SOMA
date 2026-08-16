@@ -457,6 +457,7 @@ def _run_batches(
     iduser: str,
     allow_retry: bool,
     run_caixas_bancos: bool,
+    debug_row: int | None,
     entradas_saidas: Any,
     transferencias: Any,
 ) -> RunTotals:
@@ -526,7 +527,7 @@ def _run_batches(
         batch += 1
         with step(logger, "run.preprocess", run_id=run_id, batch=batch):
             sheets = SheetsClient(settings)
-            result = preprocess_contaordem(sheets, ws=ws, run_id=run_id, batch=batch)
+            result = preprocess_contaordem(sheets, ws=ws, run_id=run_id, batch=batch, debug_row=debug_row)
         legacy_report.preprocess_summary(result.eligible_total, len(result.workset))
 
         if not result.workset:
@@ -588,6 +589,8 @@ def main() -> int:
 
     run_caixas_bancos = env_bool("RUN_CAIXAS_BANCOS", default=True)
     api_fallback_selenium = env_bool("API_FALLBACK_SELENIUM", default=True)
+    debug_row_raw = (env_str("DEBUG_ROW", "") or "").strip()
+    debug_row = int(debug_row_raw) if debug_row_raw.isdigit() and int(debug_row_raw) > 0 else None
 
     state = RunState()
     totals = RunTotals()
@@ -595,7 +598,7 @@ def main() -> int:
     batch = 1
     with step(logger, "run.preprocess", run_id=run_id, batch=batch, initial=True):
         sheets = SheetsClient(settings)
-        result = preprocess_contaordem(sheets, ws=ws, run_id=run_id, batch=batch)
+        result = preprocess_contaordem(sheets, ws=ws, run_id=run_id, batch=batch, debug_row=debug_row)
     legacy_report.preprocess_summary(result.eligible_total, len(result.workset))
 
     if not result.workset:
@@ -633,6 +636,7 @@ def main() -> int:
                 iduser=iduser,
                 allow_retry=allow_retry,
                 run_caixas_bancos=run_caixas_bancos,
+                debug_row=debug_row,
                 entradas_saidas=entradas_saidas,
                 transferencias=transferencias,
             )

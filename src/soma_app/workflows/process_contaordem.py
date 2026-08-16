@@ -167,8 +167,17 @@ class SheetsTable:
         raise RuntimeError("Não consegui ler o header da worksheet via SheetsClient.")
 
     def _read_records(self) -> List[Dict[str, Any]]:
+        formatted = getattr(self.sheets, 'get_all_records_formatted', None)
+        if callable(formatted):
+            try:
+                recs = formatted(ws=self.ws)
+            except TypeError:
+                recs = formatted(self.ws)
+            if isinstance(recs, list):
+                return [dict(r) for r in recs]
+
         # tenta métodos comuns que retornam list[dict]
-        for meth in ("get_all_records", "read_all_records", "read_records", "get_records"):
+        for meth in ('get_all_records', 'read_all_records', 'read_records', 'get_records'):
             fn = getattr(self.sheets, meth, None)
             if callable(fn):
                 try:
@@ -179,17 +188,16 @@ class SheetsTable:
                     return [dict(r) for r in recs]
 
         # fallback: tenta read_table com header
-        fn = getattr(self.sheets, "read_table", None)
+        fn = getattr(self.sheets, 'read_table', None)
         if callable(fn):
             try:
                 out = fn(ws=self.ws)
             except TypeError:
                 out = fn(self.ws)
-            if isinstance(out, dict) and "records" in out:
-                return [dict(r) for r in out["records"]]
+            if isinstance(out, dict) and 'records' in out:
+                return [dict(r) for r in out['records']]
 
-        raise RuntimeError("Não consegui ler records da worksheet via SheetsClient.")
-
+        raise RuntimeError('Não consegui ler records da worksheet via SheetsClient.')
 
 @dataclass
 class PreprocessResult:
@@ -212,6 +220,7 @@ def preprocess_contaordem(
     run_id: str,
     batch: int,
     batch_size: Optional[int] = None,
+    debug_row: Optional[int] = None,
     doc_col: str = DOC_COL_DEFAULT,
     tipo_col: str = TIPO_COL_DEFAULT,
     status_col: str = STATUS_COL_DEFAULT,
@@ -290,6 +299,13 @@ def preprocess_contaordem(
 
     eligible_total = len(eligible_rows)
     workset = eligible_rows[:capacity_new]
+
+    if debug_row is not None:
+        debug_match = next((r for r in rows if int(r.get("row", 0)) == int(debug_row)), None)
+        if debug_match is None:
+            raise RuntimeError(f"DEBUG_ROW={debug_row} não foi encontrada na worksheet {ws}.")
+        workset = [debug_match]
+        eligible_total = 1
 
     # lock apenas o workset
     updates: List[Tuple[int, str, Any]] = []
