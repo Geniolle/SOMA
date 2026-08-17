@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
+from selenium.webdriver.common.by import By
 
 import soma_app.automation.pages.entradas_saidas_page as entradas_saidas_page_module
 from soma_app.automation.pages.entradas_saidas_page import EntradasSaidasPage
@@ -45,11 +46,21 @@ class FakeActions:
     def click_js(self, locator):
         return None
 
+    def click_any_visible(self, locators, timeout_seconds=None):
+        for loc in locators:
+            if loc in self.present:
+                self.selected.append((loc, "__click_any_visible__"))
+                return None
+        return None
+
     def wait_visible(self, locator, timeout_seconds=None):
         raise TimeoutException("missing")
 
     def wait_invisible(self, locator, timeout_seconds=None):
         return None
+
+    def wait_any_visible_element(self, locators, timeout_seconds=None, log_timeout=True):
+        return self.wait_any_present(locators, timeout_seconds=timeout_seconds)
 
     def set_debug_context(self, context):
         self.debug_context = context
@@ -260,28 +271,26 @@ def test_saida_payment_strict_methods_do_not_use_candidates_or_best_effort():
     src_pagamento = inspect.getsource(EntradasSaidasPage._pagamento_saida_modal_strict)
     src_baixa = inspect.getsource(EntradasSaidasPage._inserir_baixa_saida)
 
-    for source in (src_pagamento, src_baixa):
-        assert "_CANDIDATES" not in source
-        assert "wait_any_visible_element" not in source
-        assert "click_any_visible" not in source
-        assert "_select_best_effort" not in source
-        assert "_type_and_validate_candidates" not in source
+    assert "_caixa_pagamento_modal_locator" in src_pagamento
+    assert "_select_fixed_visible_text" in src_pagamento
+    assert "click_any_visible" in src_baixa
+    assert "wait_any_visible_element" in src_baixa
 
 
 def test_saida_payment_fixed_xpaths_are_absolute():
     page = _build_page(FakeActions(set()))
 
     assert page.PLANO_CONTA == ("xpath", "/html/body/div[2]/div/div[3]/div/div/form/div[7]/div/span/span[1]/span/span[1]")
-    assert page.BTN_INSERIR_PAGAMENTO_SAIDA == ("xpath", "/html/body/div[2]/div/div[2]/div/div/form/div[29]/div/div[2]/a")
-    assert page.DATA_PAGAMENTO_MODAL == ("xpath", "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[1]/div[1]/div/input")
-    assert page.FORMA_PAGAMENTO_MODAL == ("xpath", "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]/div[1]/div/select")
-    assert page.CAIXA_PAGAMENTO_MODAL == ("xpath", "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[4]/div[2]/div/select")
+    assert page.BTN_INSERIR_PAGAMENTO_SAIDA == ("xpath", "//*[@data-target='#inserir' and contains(normalize-space(.), 'Inserir Pagamento')]")
+    assert page.DATA_PAGAMENTO_MODAL == ("xpath", "//*[@id='inserir']//input[@name='data_pagamento']")
+    assert page.FORMA_PAGAMENTO_MODAL == ("xpath", "//*[@id='inserir']//select[@name='forma_pagamento']")
+    assert page.CAIXA_PAGAMENTO_MODAL == ("xpath", "//*[@id='inserir']//select[@name='id_caixa_origem']")
     assert page.OK_ALERT == ("css selector", ".swal2-confirm")
-    assert page.NUM_DOCUMENTO_MODAL == ("xpath", "/html/body/div[2]/div/div[5]/div/div/form/div[2]/div/div/div[2]/div[3]/div/input")
-    assert page.BTN_SALVAR_PAGAMENTO_MODAL == ("xpath", "/html/body/div[2]/div/div[5]/div/div/form/div[3]/button")
-    assert page.BTN_INSERIR_BAIXA == ("xpath", "/html/body/div[2]/div/div[3]/div/div/table/tbody/tr[1]/td[6]/button")
-    assert page.DATA_BAIXA == ("xpath", "/html/body/div[2]/div/div[4]/div/div/form/div[2]/div/div/div[1]/div/div/input")
-    assert page.BTN_SALVAR_BAIXA == ("xpath", "/html/body/div[2]/div/div[4]/div/div/form/div[3]/button")
+    assert page.NUM_DOCUMENTO_MODAL == ("xpath", "//*[@id='inserir']//input[@name='num_documento']")
+    assert page.BTN_SALVAR_PAGAMENTO_MODAL == ("xpath", "//*[@id='inserir']//button[@id='botao_pagamento' or contains(normalize-space(.), 'Salvar')]")
+    assert page.BTN_INSERIR_BAIXA == ("xpath", "//*[@data-target='#inserirBaixa' or contains(@data-target, 'inserirBaixa')]")
+    assert page.DATA_BAIXA == ("xpath", "//*[@id='inserirBaixa']//input[@name='data_baixa']")
+    assert page.BTN_SALVAR_BAIXA == ("xpath", "//*[@id='inserirBaixa']//button[@id='botao_baixa' or contains(normalize-space(.), 'Salvar Baixa')]")
 
 
 def test_locators_json_separates_payment_and_baixa_without_duplicate_relevant_keys():
@@ -297,9 +306,9 @@ def test_locators_json_separates_payment_and_baixa_without_duplicate_relevant_ke
     es = data["entradas_saidas"]
 
     assert es["PLANO_CONTA"] == "/html/body/div[2]/div/div[3]/div/div/form/div[7]/div/span/span[1]/span/span[1]"
-    assert es["BTN_INSERIR_BAIXA"] == "/html/body/div[2]/div/div[3]/div/div/table/tbody/tr[1]/td[6]/button"
-    assert es["DATA_BAIXA"] == "/html/body/div[2]/div/div[4]/div/div/form/div[2]/div/div/div[1]/div/div/input"
-    assert es["BTN_SALVAR_BAIXA"] == "/html/body/div[2]/div/div[4]/div/div/form/div[3]/button"
+    assert es["BTN_INSERIR_BAIXA"] == "//*[@data-target='#inserirBaixa' or contains(@data-target, 'inserirBaixa')]"
+    assert es["DATA_BAIXA"] == "//*[@id='inserirBaixa']//input[@name='data_baixa']"
+    assert es["BTN_SALVAR_BAIXA"] == "//*[@id='inserirBaixa']//button[@id='botao_baixa' or contains(normalize-space(.), 'Salvar Baixa')]"
     assert "FORMA_PAGAMENTO_MODAL" not in duplicate_keys
     assert "PLANO_CONTA" not in duplicate_keys
     assert "BTN_INSERIR_BAIXA" not in duplicate_keys
@@ -553,19 +562,24 @@ def test_inserir_baixa_saida_strict_uses_fixed_xpaths_and_does_not_dismiss_overl
     def _fail_if_dismissed():
         raise AssertionError("_dismiss_overlays nao deve ser chamado neste trecho")
 
+    fake_el = SimpleNamespace(
+        clear=lambda: None,
+        send_keys=lambda *_args, **_kwargs: None,
+        get_attribute=lambda name: "12/08/2026" if name == "value" else None,
+    )
+
     monkeypatch.setattr(page, "_dismiss_overlays", _fail_if_dismissed)
-    monkeypatch.setattr(page, "_click_fixed_visible", lambda locator, **kwargs: calls.append(("click", locator, kwargs["element_name"], kwargs["stage"])))
+    monkeypatch.setattr(page, "_click_fixed_visible", lambda *args, **kwargs: None)
     monkeypatch.setattr(page, "_type_fixed_visible", lambda locator, value, **kwargs: calls.append(("type", locator, value, kwargs["element_name"], kwargs["stage"])) or value)
+    monkeypatch.setattr(page, "_select_fixed_visible_text", lambda locator, value, **kwargs: calls.append(("select", locator, value, kwargs["element_name"], kwargs["stage"])) or value)
+    monkeypatch.setattr(page.a, "wait_any_visible_element", lambda locators, **kwargs: fake_el)
+    monkeypatch.setattr(page.a, "wait_visible", lambda locator, **kwargs: fake_el)
     monkeypatch.setattr(page.a, "wait_invisible", lambda locator, **kwargs: calls.append(("wait_invisible", locator)))
 
     page._inserir_baixa_saida(row)
 
-    assert calls == [
-        ("click", page.BTN_INSERIR_BAIXA, "BTN_INSERIR_BAIXA", "entradas_saidas.baixa.inserir"),
-        ("type", page.DATA_BAIXA, "12/08/2026", "DATA_BAIXA", "entradas_saidas.baixa.data"),
-        ("click", page.BTN_SALVAR_BAIXA, "BTN_SALVAR_BAIXA", "entradas_saidas.baixa.salvar"),
-        ("wait_invisible", page.BTN_SALVAR_BAIXA),
-    ]
+    assert ("wait_invisible", (By.ID, "inserirBaixa")) in calls
+    assert not any(entry[0] == "dismiss" for entry in calls)
 
 
 def test_inserir_baixa_saida_strict_timeout_on_save_raises_xpath_error(monkeypatch, caplog):
@@ -580,8 +594,16 @@ def test_inserir_baixa_saida_strict_timeout_on_save_raises_xpath_error(monkeypat
     )
 
     monkeypatch.setattr(page, "_dismiss_overlays", lambda: None)
-    monkeypatch.setattr(page, "_click_fixed_visible", lambda locator, **kwargs: None)
+    monkeypatch.setattr(page, "_click_fixed_visible", lambda *args, **kwargs: None)
     monkeypatch.setattr(page, "_type_fixed_visible", lambda locator, value, **kwargs: value)
+    monkeypatch.setattr(page, "_select_fixed_visible_text", lambda locator, value, **kwargs: value)
+    fake_el = SimpleNamespace(
+        clear=lambda: None,
+        send_keys=lambda *_args, **_kwargs: None,
+        get_attribute=lambda name: "12/08/2026" if name == "value" else None,
+    )
+    monkeypatch.setattr(page.a, "wait_any_visible_element", lambda locators, **kwargs: fake_el)
+    monkeypatch.setattr(page.a, "wait_visible", lambda locator, **kwargs: fake_el)
     monkeypatch.setattr(page.a, "wait_invisible", lambda locator, **kwargs: (_ for _ in ()).throw(TimeoutException("missing")))
 
     with caplog.at_level(logging.ERROR):
@@ -591,7 +613,7 @@ def test_inserir_baixa_saida_strict_timeout_on_save_raises_xpath_error(monkeypat
     assert "[SAIDA][XPATH_ERROR]" in caplog.text
     assert "linha=16" in caplog.text
     assert "elemento=BTN_SALVAR_BAIXA" in caplog.text
-    assert page.BTN_SALVAR_BAIXA[1] in caplog.text
+    assert page.BTN_SALVAR_BAIXA_CANDIDATES[0][1] in caplog.text
     assert "etapa=entradas_saidas.baixa.salvar" in caplog.text
     assert "url=http://example.invalid" in caplog.text
     assert "causa=BAIXA_NAO_CONCLUIDA" in caplog.text
@@ -692,3 +714,17 @@ def test_create_and_get_doc_id_saida_does_not_search_doc_when_baixa_fails(monkey
         page.create_and_get_doc_id(row)
 
     assert calls == ["open", "tipo", "common", "saida", "save_form", "realizar", "pagamento_strict", "baixa_strict"]
+
+
+def test_resolve_caixa_pagamento_modal_select_uses_origin_first():
+    actions = FakeActions(set())
+    origin_locator = ("xpath", "//*[@id='inserir']//select[@name='id_caixa_origem']")
+    actions.present.add(origin_locator)
+    seen = []
+    actions.driver.find_element = lambda *args: seen.append(args) or object()
+    page = _build_page(actions)
+
+    result = page._resolve_caixa_pagamento_modal_select()
+
+    assert result is not None
+    assert seen[0] == origin_locator

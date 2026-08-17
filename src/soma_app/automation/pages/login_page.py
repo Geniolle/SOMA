@@ -9,6 +9,7 @@ from selenium.webdriver.common.by import By
 from soma_app.automation.actions import Actions
 from soma_app.config.locators import apply_locator_overrides
 from soma_app.config.settings import Settings
+from soma_app.infra.env import env_bool
 from soma_app.infra.trace import log_kv, step
 
 log = logging.getLogger("soma_app.pages.login")
@@ -32,10 +33,7 @@ class LoginPage:
         with step(log, "login.open_portal", url=self.settings.site_login_url):
             self.a.driver.get(self.settings.site_login_url)
 
-        with step(log, "login.fill_credentials"):
-            self.a.type(self.EMAIL, self.settings.site_user)
-            self.a.type(self.SENHA, self.settings.site_password)
-            self.a.click(self.SUBMIT)
+        self._fill_credentials(debug=env_bool("DEBUG_STEP_MODE", default=False))
 
         with step(log, "login.wait_form_disappear"):
             try:
@@ -56,6 +54,51 @@ class LoginPage:
             if self.a.exists(self.SOMA_READY, timeout_seconds=2):
                 return
             self.open_soma_app()
+
+    def _fill_credentials(self, *, debug: bool) -> None:
+        with step(log, "login.fill_credentials"):
+            if not debug:
+                self.a.type(self.EMAIL, self.settings.site_user)
+                self.a.type(self.SENHA, self.settings.site_password)
+                self.a.click(self.SUBMIT)
+                return
+
+            self._type_login_field(self.EMAIL, self.settings.site_user)
+            self._type_login_field(self.SENHA, self.settings.site_password)
+            self.a.click(self.SUBMIT)
+
+    def _type_login_field(self, locator: tuple[str, str], value: str) -> None:
+        try:
+            self.a.type(locator, value)
+            return
+        except TimeoutException:
+            el = self.a.wait_present(locator, timeout_seconds=max(30, self.settings.timeout_seconds))
+            try:
+                self.a.driver.execute_script(
+                    "arguments[0].scrollIntoView({block:'center', inline:'center'});",
+                    el,
+                )
+            except Exception:
+                pass
+
+            try:
+                el.click()
+                el.clear()
+                el.send_keys(value)
+                return
+            except Exception:
+                self.a.driver.execute_script(
+                    """
+                    const el = arguments[0];
+                    const value = arguments[1];
+                    el.focus();
+                    el.value = value;
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                    """,
+                    el,
+                    value,
+                )
 
     def open_soma_app(self) -> None:
         with step(log, "soma.portal_open", url=self.settings.site_login_url):

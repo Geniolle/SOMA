@@ -93,7 +93,18 @@
     "BTN_INSERIR_PAGAMENTO_SAIDA": "//*[@data-target='#inserir' and contains(normalize-space(.), 'Inserir Pagamento')]",
     "DATA_PAGAMENTO_MODAL": "//*[@id='inserir']//input[@name='data_pagamento']",
     "FORMA_PAGAMENTO_MODAL": "//*[@id='inserir']//select[@name='forma_pagamento']",
-    "CAIXA_PAGAMENTO_MODAL": "//*[@id='inserir']//select[@name='id_caixa']",
+    "CAIXA_PAGAMENTO_MODAL": [
+      "//*[@id='inserir']//select[@name='id_caixa_origem']",
+      "//*[@id='inserir']//select[@name='id_caixa']",
+      {
+        "by": "css selector",
+        "value": "#inserir select[name='id_caixa_origem']"
+      },
+      {
+        "by": "css selector",
+        "value": "#inserir select[name='id_caixa']"
+      }
+    ],
     "NUM_DOCUMENTO_MODAL": "//*[@id='inserir']//input[@name='num_documento']",
     "BTN_SALVAR_PAGAMENTO_MODAL": "//*[@id='inserir']//button[@id='botao_pagamento' or contains(normalize-space(.), 'Salvar')]",
     "BTN_INSERIR_BAIXA_CANDIDATES": [

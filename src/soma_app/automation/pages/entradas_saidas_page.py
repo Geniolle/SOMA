@@ -89,7 +89,13 @@ class EntradasSaidasPage:
     BTN_INSERIR_PAGAMENTO_SAIDA = (By.XPATH, "//*[@data-target='#inserir' and contains(normalize-space(.), 'Inserir Pagamento')]")
     DATA_PAGAMENTO_MODAL = (By.XPATH, "//*[@id='inserir']//input[@name='data_pagamento']")
     FORMA_PAGAMENTO_MODAL = (By.XPATH, "//*[@id='inserir']//select[@name='forma_pagamento']")
-    CAIXA_PAGAMENTO_MODAL = (By.XPATH, "//*[@id='inserir']//select[@name='id_caixa']")
+    CAIXA_PAGAMENTO_MODAL = (By.XPATH, "//*[@id='inserir']//select[@name='id_caixa_origem']")
+    CAIXA_PAGAMENTO_MODAL_CANDIDATES = [
+        (By.XPATH, "//*[@id='inserir']//select[@name='id_caixa_origem']"),
+        (By.XPATH, "//*[@id='inserir']//select[@name='id_caixa']"),
+        (By.CSS_SELECTOR, "#inserir select[name='id_caixa_origem']"),
+        (By.CSS_SELECTOR, "#inserir select[name='id_caixa']"),
+    ]
     NUM_DOCUMENTO_MODAL = (By.XPATH, "//*[@id='inserir']//input[@name='num_documento']")
     BTN_SALVAR_PAGAMENTO_MODAL = (By.XPATH, "//*[@id='inserir']//button[@id='botao_pagamento' or contains(normalize-space(.), 'Salvar')]")
 
@@ -1225,7 +1231,13 @@ class EntradasSaidasPage:
             self._emit("Realizar pagamento salvo com sucesso!", row=row.row_number, tipo=row.tipo.value)
 
     def _resolve_caixa_pagamento_modal_select(self) -> Any:
-        return self.a.driver.find_element(*self.CAIXA_PAGAMENTO_MODAL)
+        return self.a.driver.find_element(*self._caixa_pagamento_modal_locator())
+
+    def _caixa_pagamento_modal_locator(self) -> Tuple[str, str]:
+        try:
+            return self.a.wait_any_present(self.CAIXA_PAGAMENTO_MODAL_CANDIDATES, timeout_seconds=20)
+        except Exception:
+            return self.CAIXA_PAGAMENTO_MODAL_CANDIDATES[0]
 
     def _pagamento_saida_modal_strict(self, row: ContaOrdemRow) -> None:
         with step(log, "entradas_saidas.pagamento_saida_modal", row=row.row_number, tipo=row.tipo.value):
@@ -1387,16 +1399,16 @@ class EntradasSaidasPage:
                 phase="BEFORE",
                 action="SELECT",
                 element_name="CAIXA_PAGAMENTO_MODAL",
-                locator=self.CAIXA_PAGAMENTO_MODAL,
+                locator=self._caixa_pagamento_modal_locator(),
                 value=row.caixa,
                 instructions=[
                     "Confirme que o campo Caixa está visível no modal.",
-                    f"Se quiser testar o XPath, use: x {self.CAIXA_PAGAMENTO_MODAL[1]}",
+                    f"Se quiser testar o XPath, use: x {self._caixa_pagamento_modal_locator()[1]}",
                     "Pressione ENTER para selecionar a Caixa.",
                 ],
             )
             chosen_cx = self._select_fixed_visible_text(
-                self.CAIXA_PAGAMENTO_MODAL,
+                self._caixa_pagamento_modal_locator(),
                 row.caixa,
                 row=row,
                 stage="entradas_saidas.pagamento_saida_modal.caixa",
@@ -1412,7 +1424,7 @@ class EntradasSaidasPage:
                 phase="AFTER",
                 action="SELECT",
                 element_name="CAIXA_PAGAMENTO_MODAL",
-                locator=self.CAIXA_PAGAMENTO_MODAL,
+                locator=self._caixa_pagamento_modal_locator(),
                 value=chosen_cx,
                 instructions=[
                     "Confirme que a Caixa ficou selecionada corretamente.",
@@ -1693,16 +1705,16 @@ class EntradasSaidasPage:
                 phase="BEFORE",
                 action="SELECT",
                 element_name="CAIXA_PAGAMENTO_MODAL",
-                locator=self.CAIXA_PAGAMENTO_MODAL,
+                locator=self._caixa_pagamento_modal_locator(),
                 value=row.caixa,
                 instructions=[
                     "Confirme que o campo Caixa está visível no modal.",
-                    f"Se quiser testar o XPath, use: x {self.CAIXA_PAGAMENTO_MODAL[1]}",
+                    f"Se quiser testar o XPath, use: x {self._caixa_pagamento_modal_locator()[1]}",
                     "Pressione ENTER para selecionar a Caixa.",
                 ],
             )
             chosen_cx = self._select_fixed_visible_text(
-                self.CAIXA_PAGAMENTO_MODAL,
+                self._caixa_pagamento_modal_locator(),
                 row.caixa,
                 row=row,
                 stage="entradas_saidas.baixa.caixa",
@@ -1718,7 +1730,7 @@ class EntradasSaidasPage:
                 phase="AFTER",
                 action="SELECT",
                 element_name="CAIXA_PAGAMENTO_MODAL",
-                locator=self.CAIXA_PAGAMENTO_MODAL,
+                locator=self._caixa_pagamento_modal_locator(),
                 value=chosen_cx,
                 instructions=[
                     "Confirme que a Caixa ficou selecionada corretamente.",

@@ -31,10 +31,26 @@ class FakeLoginActions:
         self.wait_visible_calls: list[tuple] = []
         self.wait_present_calls: list[tuple] = []
         self.clicked_js: list[tuple] = []
+        self.types: list[tuple] = []
 
         class _SwitchTo:
             def window(self, handle):
                 return None
+
+        class _Element:
+            def __init__(self, outer):
+                self.outer = outer
+                self.value = ""
+
+            def click(self):
+                return None
+
+            def clear(self):
+                self.value = ""
+
+            def send_keys(self, text):
+                self.value += text
+                self.outer.types.append(text)
 
         self.driver = SimpleNamespace(
             current_url="https://example.invalid/portal",
@@ -42,7 +58,13 @@ class FakeLoginActions:
             window_handles=["main"],
             switch_to=_SwitchTo(),
             get=lambda url: None,
+            execute_script=lambda *args, **kwargs: None,
         )
+        self.element = _Element(self)
+
+    def type(self, locator, text, clear=True):
+        self.wait_visible_calls.append((locator, None))
+        raise TimeoutException("not visible")
 
     def wait_any_present(self, locators, timeout_seconds=None):
         for locator in locators:
@@ -53,6 +75,9 @@ class FakeLoginActions:
     def click_js(self, locator):
         self.clicked_js.append(locator)
 
+    def click(self, locator):
+        self.clicked_js.append(locator)
+
     def wait_visible(self, locator, timeout_seconds=None):
         self.wait_visible_calls.append((locator, timeout_seconds))
         raise TimeoutException("not visible")
@@ -60,7 +85,7 @@ class FakeLoginActions:
     def wait_present(self, locator, timeout_seconds=None):
         self.wait_present_calls.append((locator, timeout_seconds))
         if locator in self.present:
-            return locator
+            return self.element
         raise TimeoutException("not present")
 
     def screenshot(self, name):
@@ -80,6 +105,18 @@ def test_login_open_soma_app_falls_back_to_presence_when_ready_is_not_visible(mo
     assert actions.clicked_js == [page.SOMA_BUTTON_CANDIDATES[0]]
     assert actions.wait_visible_calls
     assert actions.wait_present_calls
+
+
+def test_login_debug_credentials_fallback_uses_present_element_when_visible_times_out():
+    actions = FakeLoginActions(present=[LoginPage.EMAIL, LoginPage.SENHA])
+    settings = SimpleNamespace(site_login_url="https://example.invalid/login", timeout_seconds=2, site_user="user", site_password="pass")
+    page = LoginPage(actions, settings)
+
+    page._fill_credentials(debug=True)
+
+    assert actions.types == ["user", "pass"]
+    assert actions.wait_visible_calls == [(LoginPage.EMAIL, None), (LoginPage.SENHA, None)]
+    assert actions.wait_present_calls == [(LoginPage.EMAIL, 30), (LoginPage.SENHA, 30)]
 
 
 def test_bootstrap_prefers_existing_token_by_default():

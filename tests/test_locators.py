@@ -138,3 +138,9 @@ def test_load_real_locators_json_configuration():
     common_cfg = load_page_locator_config(None, "common")
     assert common_cfg is not None
     assert "SELECT2_SEARCH" in common_cfg
+
+    entradas_saidas_cfg = load_page_locator_config(None, "entradas_saidas")
+    assert entradas_saidas_cfg is not None
+    caixa_cfg = entradas_saidas_cfg["CAIXA_PAGAMENTO_MODAL"]
+    assert isinstance(caixa_cfg, list)
+    assert caixa_cfg[0] == "//*[@id='inserir']//select[@name='id_caixa_origem']"
