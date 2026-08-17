@@ -133,6 +133,7 @@ def test_load_real_locators_json_configuration():
     assert login_cfg is not None
     assert "SOMA_READY" in login_cfg
     assert "SOMA_BUTTON_CANDIDATES" in login_cfg
+    assert "entradas_saidas" in login_cfg["SOMA_READY"]
 
     common_cfg = load_page_locator_config(None, "common")
     assert common_cfg is not None

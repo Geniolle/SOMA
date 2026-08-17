@@ -6,7 +6,7 @@
     "EMAIL": { "by": "name", "value": "email" },
     "SENHA": { "by": "name", "value": "senha" },
     "SUBMIT": { "by": "name", "value": "submit" },
-    "SOMA_READY": "//*[self::a or self::button or self::span][contains(.,'Entradas') and (contains(.,'Saídas') or contains(.,'Saidas') or contains(.,'saídas') or contains(.,'saidas'))]",
+    "SOMA_READY": "//div[contains(@class,'col-sm-2') and contains(@onclick,'entradas_saidas') and (contains(.,'Entradas/saídas') or contains(.,'Entradas/saidas') or contains(.,'Entradas/Saídas') or contains(.,'Entradas/Saidas'))]",
     "SOMA_BUTTON_CANDIDATES": [
       { "by": "id", "value": "285" },
       "//*[@id='285']",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -9,6 +10,8 @@ from soma_app.workflows.process_contaordem import (
     STATUS_COL_DEFAULT,
     SheetsTable,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _now_pt() -> str:
@@ -44,6 +47,7 @@ def mark_row_ok(
         if c:
             updates.append((row_idx, c, elapsed_ms))
     t.batch_update_cells(updates)
+    logger.info("DOC. SOMA gravado na sheet | row=%s | doc=%s | status=VALIDADO", row_idx, doc_id)
 
 
 def mark_row_duplicate(

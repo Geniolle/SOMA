@@ -98,13 +98,20 @@ class LoginPage:
             try:
                 self.a.wait_visible(self.SOMA_READY, timeout_seconds=max(60, self.settings.timeout_seconds))
             except TimeoutException:
-                p = self.a.screenshot("soma_not_ready")
-                log_kv(
-                    log,
-                    "SOMA nao carregou a tempo.",
-                    level=logging.ERROR,
-                    url=self.a.driver.current_url,
-                    title=self.a.driver.title,
-                    screenshot=p,
-                )
-                raise RuntimeError("SOMA nao carregou (Entradas/saidas nao apareceu).")
+                try:
+                    self.a.wait_present(self.SOMA_READY, timeout_seconds=10)
+                    log.warning(
+                        "SOMA_READY nao ficou visivel, mas o seletor foi encontrado no DOM; seguindo.",
+                        extra={"url": self.a.driver.current_url, "title": self.a.driver.title},
+                    )
+                except TimeoutException:
+                    p = self.a.screenshot("soma_not_ready")
+                    log_kv(
+                        log,
+                        "SOMA nao carregou a tempo.",
+                        level=logging.ERROR,
+                        url=self.a.driver.current_url,
+                        title=self.a.driver.title,
+                        screenshot=p,
+                    )
+                    raise RuntimeError("SOMA nao carregou (Entradas/saidas nao apareceu).")
