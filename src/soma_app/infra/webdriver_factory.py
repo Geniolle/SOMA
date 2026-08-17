@@ -118,7 +118,8 @@ def _build_options(headless: bool, downloads_dir: str, user_data_dir: str) -> Op
 def _build_service() -> Service:
     # Silencia logs do ChromeDriver (não é o mesmo que logs do Chrome, mas ajuda)
     try:
-        return Service(log_output=os.devnull)
+        log_path = os.path.join(tempfile.gettempdir(), f"soma-chromedriver-{os.getpid()}.log")
+        return Service(log_output=log_path)
     except TypeError:
         return Service()
 
@@ -186,8 +187,16 @@ def create_driver(
 
     options = _build_options(headless=headless_v, downloads_dir=downloads_v, user_data_dir=user_data_v)
     service = _build_service()
+    chromedriver_log = os.path.join(tempfile.gettempdir(), f"soma-chromedriver-{os.getpid()}.log")
 
-    log_kv(logger, "WebDriver create start", headless=headless_v, downloads=downloads_v, user_data_dir=user_data_v)
+    log_kv(
+        logger,
+        "WebDriver create start",
+        headless=headless_v,
+        downloads=downloads_v,
+        user_data_dir=user_data_v,
+        chromedriver_log=chromedriver_log,
+    )
     original_init = ChromiumRemoteConnection.__init__
 
     def patched_init(
@@ -220,7 +229,14 @@ def create_driver(
         driver = webdriver.Chrome(service=service, options=options)
     finally:
         ChromiumRemoteConnection.__init__ = original_init
-    log_kv(logger, "WebDriver chrome ready", headless=headless_v, downloads=downloads_v, user_data_dir=user_data_v)
+    log_kv(
+        logger,
+        "WebDriver chrome ready",
+        headless=headless_v,
+        downloads=downloads_v,
+        user_data_dir=user_data_v,
+        chromedriver_log=chromedriver_log,
+    )
     
     # === FORÇAR MAXIMIZAÇÃO (Dupla Segurança) ===
     if not headless_v:
@@ -243,7 +259,14 @@ def create_driver(
     except Exception:
         pass
 
-    log_kv(logger, "WebDriver OK", headless=headless_v, downloads=downloads_v, user_data_dir=user_data_v)
+    log_kv(
+        logger,
+        "WebDriver OK",
+        headless=headless_v,
+        downloads=downloads_v,
+        user_data_dir=user_data_v,
+        chromedriver_log=chromedriver_log,
+    )
     return driver
 
 
