@@ -52,3 +52,12 @@ Seletores de Page Objects (`automation/pages/*_page.py`) podem ser sobrescritos 
 
 - Não assumir que funções com o mesmo nome em módulos diferentes (`_now_pt`, `_norm`, etc.) fazem a mesma coisa — ler a implementação antes de consolidar.
 - `run_soma.py::main()` é só orquestração: delega para `_bootstrap_backend` (browser/API), `_build_processors`, `_run_batches` (loop de batches + `_process_row` por linha) e `_build_summary`. Estado que precisa sobreviver a exceções parciais (ex.: `bundle`/`api_client` criados a meio do bootstrap) usa `RunState`/`RunTotals`, não variáveis soltas — preserva o cleanup no `finally` de `main()` mesmo se `_bootstrap_backend` falhar no meio. Qualquer nova extração deve manter a ordem exata dos `with step(logger, ...)` (rastreabilidade em produção via `run_id`/`RUN_ID`).
+
+## Lições operacionais já aprendidas
+
+- Não reintroduzir um seletor antigo só porque existia no passado. Quando a UI muda, preferir `config/locators.json` com lista de candidatos e fallback explícito, em vez de criar dois fluxos paralelos no Python.
+- Não misturar correção de bug com refatoração estrutural no mesmo passo quando há um fluxo já funcional. Primeiro preservar o caminho que funciona, depois corrigir o ponto falho com o menor delta possível.
+- Para a tela de Saída, não assumir que o campo `Caixa` usa sempre o mesmo `name` ou o mesmo modal. Confirmar no HTML e manter fallback entre os seletores observados antes de alterar a lógica principal.
+- Só considerar o fluxo concluído quando houver evidência de ponta a ponta: criação do registo no SOMA, captura do `DOC` final e escrita confirmada na sheet.
+- Antes de marcar como corrigido, validar automaticamente com teste unitário ou execução reproduzível e conferir logs. Se o log mostrar que o processo pára antes do salvamento da sheet ou antes do próximo lote, ainda não está resolvido.
+- Não mexer no agendador/PM2/crontab sem confirmar se o objetivo é execução manual, agendada ou ambos. Mudanças de boot automático e mudanças de workflow são problemas diferentes.
