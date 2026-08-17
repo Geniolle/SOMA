@@ -188,7 +188,7 @@ def test_create_driver_headless_skips_maximize(monkeypatch):
     from soma_app.infra import webdriver_factory
 
     calls = {"maximize": 0, "size": 0, "cdp": 0}
-    captured = {"timeouts": []}
+    captured = {"timeouts": [], "options": [], "user_data_dir": None}
 
     class DummyDriver:
         def maximize_window(self):
@@ -208,10 +208,28 @@ def test_create_driver_headless_skips_maximize(monkeypatch):
         )
         return DummyDriver()
 
+    class FakeOptions:
+        def __init__(self):
+            self.args = []
+            self.prefs = {}
+
+        def add_argument(self, value):
+            self.args.append(value)
+
+        def add_experimental_option(self, name, value):
+            if name == "prefs":
+                self.prefs = value
+
+    def fake_build_options(headless, downloads_dir, user_data_dir):
+        captured["options"].append((headless, downloads_dir, user_data_dir))
+        captured["user_data_dir"] = user_data_dir
+        return FakeOptions()
+
     monkeypatch.setattr(webdriver_factory.webdriver, "Chrome", fake_chrome)
     monkeypatch.setattr(webdriver_factory, "_build_service", lambda: SimpleNamespace())
     monkeypatch.setattr(webdriver_factory, "_resolve_downloads_dir", lambda settings=None, downloads_dir=None: "artifacts/downloads")
-    monkeypatch.setattr(webdriver_factory, "_build_options", lambda headless, downloads_dir: SimpleNamespace())
+    monkeypatch.setattr(webdriver_factory, "_resolve_user_data_dir", lambda settings=None, user_data_dir=None: "artifacts/chrome-profile")
+    monkeypatch.setattr(webdriver_factory, "_build_options", fake_build_options)
     monkeypatch.setattr(webdriver_factory, "log_kv", lambda *args, **kwargs: None)
 
     def fake_init(
@@ -236,4 +254,6 @@ def test_create_driver_headless_skips_maximize(monkeypatch):
     assert calls["size"] == 0
     assert calls["cdp"] == 1
     assert captured["timeouts"] == [300]
+    assert captured["options"] == [(True, "artifacts/downloads", "artifacts/chrome-profile")]
+    assert captured["user_data_dir"] == "artifacts/chrome-profile"
     assert isinstance(driver, DummyDriver)

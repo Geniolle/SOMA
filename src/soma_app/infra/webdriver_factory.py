@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterator, Optional
@@ -52,7 +53,19 @@ def _resolve_downloads_dir(settings: Any = None, downloads_dir: Optional[str] = 
     return paths["downloads_dir"]
 
 
-def _build_options(headless: bool, downloads_dir: str) -> Options:
+def _resolve_user_data_dir(settings: Any = None, user_data_dir: Optional[str] = None) -> str:
+    if user_data_dir:
+        return os.fspath(user_data_dir)
+
+    for name in ("chrome_user_data_dir", "CHROME_USER_DATA_DIR", "selenium_user_data_dir", "SELENIUM_USER_DATA_DIR"):
+        v = _get_setting(settings, name, default=None)
+        if v:
+            return os.fspath(v)
+
+    return tempfile.mkdtemp(prefix="soma-chrome-profile-")
+
+
+def _build_options(headless: bool, downloads_dir: str, user_data_dir: str) -> Options:
     opt = Options()
 
     # Headless/viewport
@@ -67,6 +80,7 @@ def _build_options(headless: bool, downloads_dir: str) -> Options:
     opt.add_argument("--disable-gpu")
     opt.add_argument("--no-sandbox")
     opt.add_argument("--disable-dev-shm-usage")
+    opt.add_argument(f"--user-data-dir={os.path.abspath(user_data_dir)}")
 
     # “Calar” logs do Chrome (reduz bastante no console)
     opt.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
@@ -167,12 +181,13 @@ def create_driver(
     if env_bool("DEBUG_STEP_MODE", default=False) and headless_v:
         raise RuntimeError("DEBUG_STEP_MODE=true requer HEADLESS=false para manter o browser visível.")
     downloads_v = _resolve_downloads_dir(settings, downloads_dir)
+    user_data_v = _resolve_user_data_dir(settings)
     http_timeout = env_int("SELENIUM_HTTP_TIMEOUT", 300)
 
-    options = _build_options(headless=headless_v, downloads_dir=downloads_v)
+    options = _build_options(headless=headless_v, downloads_dir=downloads_v, user_data_dir=user_data_v)
     service = _build_service()
 
-    log_kv(logger, "WebDriver create start", headless=headless_v, downloads=downloads_v)
+    log_kv(logger, "WebDriver create start", headless=headless_v, downloads=downloads_v, user_data_dir=user_data_v)
     original_init = ChromiumRemoteConnection.__init__
 
     def patched_init(
@@ -205,7 +220,7 @@ def create_driver(
         driver = webdriver.Chrome(service=service, options=options)
     finally:
         ChromiumRemoteConnection.__init__ = original_init
-    log_kv(logger, "WebDriver chrome ready", headless=headless_v, downloads=downloads_v)
+    log_kv(logger, "WebDriver chrome ready", headless=headless_v, downloads=downloads_v, user_data_dir=user_data_v)
     
     # === FORÇAR MAXIMIZAÇÃO (Dupla Segurança) ===
     if not headless_v:
@@ -228,7 +243,7 @@ def create_driver(
     except Exception:
         pass
 
-    log_kv(logger, "WebDriver OK", headless=headless_v, downloads=downloads_v)
+    log_kv(logger, "WebDriver OK", headless=headless_v, downloads=downloads_v, user_data_dir=user_data_v)
     return driver
 
 
