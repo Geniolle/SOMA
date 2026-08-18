@@ -28,6 +28,7 @@ class FakeApiClient:
 class FakeLoginActions:
     def __init__(self, *, present=None):
         self.present = set(present or [])
+        self.wait_any_visible_calls: list[tuple] = []
         self.wait_visible_calls: list[tuple] = []
         self.wait_present_calls: list[tuple] = []
         self.clicked_js: list[tuple] = []
@@ -72,6 +73,13 @@ class FakeLoginActions:
                 return locator
         raise TimeoutException("missing")
 
+    def wait_any_visible_element(self, locators, timeout_seconds=None, *, log_timeout=True):
+        self.wait_any_visible_calls.append((tuple(locators), timeout_seconds, log_timeout))
+        for locator in locators:
+            if locator in self.present:
+                return self.element
+        raise TimeoutException("missing")
+
     def click_js(self, locator):
         self.clicked_js.append(locator)
 
@@ -103,8 +111,8 @@ def test_login_open_soma_app_falls_back_to_presence_when_ready_is_not_visible(mo
     page.open_soma_app()
 
     assert actions.clicked_js == [page.SOMA_BUTTON_CANDIDATES[0]]
-    assert actions.wait_visible_calls
-    assert actions.wait_present_calls
+    assert actions.wait_any_visible_calls
+    assert actions.wait_present_calls == []
 
 
 def test_login_debug_credentials_fallback_uses_present_element_when_visible_times_out():

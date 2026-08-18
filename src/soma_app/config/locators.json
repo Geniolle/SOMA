@@ -6,7 +6,12 @@
     "EMAIL": { "by": "name", "value": "email" },
     "SENHA": { "by": "name", "value": "senha" },
     "SUBMIT": { "by": "name", "value": "submit" },
-    "SOMA_READY": "//div[contains(@class,'col-sm-2') and contains(@onclick,'entradas_saidas') and (contains(.,'Entradas/saídas') or contains(.,'Entradas/saidas') or contains(.,'Entradas/Saídas') or contains(.,'Entradas/Saidas'))]",
+    "SOMA_READY": "//a[contains(@href,'exec=entradas_saidas') and .//span[contains(@class,'site-menu-title')]]",
+    "SOMA_READY_CANDIDATES": [
+      "//a[contains(@href,'exec=entradas_saidas') and contains(@class,'atalho-card')]",
+      "//a[contains(@href,'exec=entradas_saidas') and .//span[contains(@class,'site-menu-title')]]",
+      "//a[contains(@href,'exec=entradas_saidas') and (contains(.,'Entradas/sa') or contains(.,'Entradas/Sa'))]"
+    ],
     "SOMA_BUTTON_CANDIDATES": [
       { "by": "id", "value": "285" },
       "//*[@id='285']",

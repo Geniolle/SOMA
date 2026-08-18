@@ -132,8 +132,12 @@ def test_load_real_locators_json_configuration():
     login_cfg = load_page_locator_config(None, "login")
     assert login_cfg is not None
     assert "SOMA_READY" in login_cfg
+    assert "SOMA_READY_CANDIDATES" in login_cfg
     assert "SOMA_BUTTON_CANDIDATES" in login_cfg
-    assert "entradas_saidas" in login_cfg["SOMA_READY"]
+    assert "exec=entradas_saidas" in login_cfg["SOMA_READY"]
+    assert "site-menu-title" in login_cfg["SOMA_READY"]
+    assert isinstance(login_cfg["SOMA_READY_CANDIDATES"], list)
+    assert any("atalho-card" in item for item in login_cfg["SOMA_READY_CANDIDATES"])
 
     common_cfg = load_page_locator_config(None, "common")
     assert common_cfg is not None

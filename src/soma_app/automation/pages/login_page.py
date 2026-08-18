@@ -21,6 +21,7 @@ class LoginPage:
     SUBMIT = (By.NAME, "submit")
 
     SOMA_READY = (By.XPATH, "")
+    SOMA_READY_CANDIDATES = []
 
     SOMA_BUTTON_CANDIDATES = []
 
@@ -51,9 +52,11 @@ class LoginPage:
 
     def ensure_soma_home(self) -> None:
         with step(log, "soma.ensure_home", url=self.a.driver.current_url, title=self.a.driver.title):
-            if self.a.exists(self.SOMA_READY, timeout_seconds=2):
+            try:
+                self.a.wait_any_visible_element(self.SOMA_READY_CANDIDATES, timeout_seconds=2, log_timeout=False)
                 return
-            self.open_soma_app()
+            except TimeoutException:
+                self.open_soma_app()
 
     def _fill_credentials(self, *, debug: bool) -> None:
         with step(log, "login.fill_credentials"):
@@ -139,7 +142,10 @@ class LoginPage:
 
         with step(log, "soma.wait_ready"):
             try:
-                self.a.wait_visible(self.SOMA_READY, timeout_seconds=max(60, self.settings.timeout_seconds))
+                self.a.wait_any_visible_element(
+                    self.SOMA_READY_CANDIDATES,
+                    timeout_seconds=max(60, self.settings.timeout_seconds),
+                )
             except TimeoutException:
                 try:
                     self.a.wait_present(self.SOMA_READY, timeout_seconds=10)
