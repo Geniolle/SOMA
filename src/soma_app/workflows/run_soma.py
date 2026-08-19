@@ -147,6 +147,57 @@ def _run_post_processes(
             logger.exception("Falha no processo de atualização da sheet SOMA.")
 
 
+# ###################################################################################
+# (1) PÓS-CRIAÇÃO OPCIONAL DO DOC
+# ###################################################################################
+def _sync_post_create_doc_data(
+    *,
+    entradas_saidas: Any,
+    table: SheetsTable,
+    row_idx: int,
+    row_model: ContaOrdemRow,
+    doc_id: str,
+) -> None:
+    if not env_bool("SOMA_SYNC_DOC_AFTER_CREATE", False):
+        return
+
+    # Mantém a fila rápida por defeito: a sincronização de DADOS DOC e o regresso
+    # à lista passam a ser best-effort e opcionais.
+    try:
+        dados_doc = entradas_saidas.fetch_dados_doc(str(doc_id))
+    except Exception:
+        logger.exception("Falha ao ler DADOS DOC após a criação do documento.")
+    else:
+        if dados_doc and table.has_col("DADOS DOC"):
+            try:
+                table.batch_update_cells([(row_idx, "DADOS DOC", dados_doc)])
+            except Exception:
+                logger.exception("Falha ao gravar DADOS DOC após a criação do documento.")
+
+    try:
+        go_back = getattr(entradas_saidas, "go_back_to_list", None)
+        if callable(go_back):
+            go_back(row_model)
+    except Exception:
+        logger.exception("Falha ao tentar voltar para a lista após a criação do documento.")
+
+
+# ###################################################################################
+# (2) LOG DE TEMPOS POR SUBPASSO
+# ###################################################################################
+def _log_row_step_timing(*, run_id: str, row_idx: int, tipo_txt: str, stage: str, elapsed_ms: int) -> None:
+    log_kv(
+        logger,
+        "Tempo do subpasso da linha",
+        level=logging.INFO,
+        run_id=run_id,
+        row=row_idx,
+        tipo=tipo_txt,
+        stage=stage,
+        dt_ms=elapsed_ms,
+    )
+
+
 def _bootstrap_api_session(
     api_client: SomaApiClient,
     *,
@@ -375,9 +426,24 @@ def _process_row(
                 doc_id = transferencias.run(row_model)
                 elapsed_ms = int((time.perf_counter() - row_t0) * 1000)
                 mark_row_ok(table, row_idx, str(doc_id), iduser, elapsed_ms=elapsed_ms)
+                _log_row_step_timing(
+                    run_id=run_id,
+                    row_idx=row_idx,
+                    tipo_txt=tipo_txt,
+                    stage="row_total",
+                    elapsed_ms=elapsed_ms,
+                )
                 return RowOutcome(ok=True, elapsed_ms=elapsed_ms, transfer=True)
 
+            precheck_t0 = time.perf_counter()
             duplicate_doc = entradas_saidas.precheck_duplicate(row_model)
+            _log_row_step_timing(
+                run_id=run_id,
+                row_idx=row_idx,
+                tipo_txt=tipo_txt,
+                stage="precheck_duplicate",
+                elapsed_ms=int((time.perf_counter() - precheck_t0) * 1000),
+            )
             if duplicate_doc:
                 elapsed_ms = int((time.perf_counter() - row_t0) * 1000)
                 mark_row_duplicate(table, row_idx, iduser, elapsed_ms=elapsed_ms)
@@ -389,16 +455,33 @@ def _process_row(
                     tipo=tipo_txt,
                     doc=duplicate_doc,
                 )
+                _log_row_step_timing(
+                    run_id=run_id,
+                    row_idx=row_idx,
+                    tipo_txt=tipo_txt,
+                    stage="row_total",
+                    elapsed_ms=elapsed_ms,
+                )
                 return RowOutcome(ok=True, elapsed_ms=elapsed_ms, duplicated=True)
 
+            create_t0 = time.perf_counter()
             doc_id = entradas_saidas.create_and_get_doc_id(row_model)
+            _log_row_step_timing(
+                run_id=run_id,
+                row_idx=row_idx,
+                tipo_txt=tipo_txt,
+                stage="create_and_get_doc_id",
+                elapsed_ms=int((time.perf_counter() - create_t0) * 1000),
+            )
 
             if not str(doc_id).startswith("SEM_DOC_"):
+                elapsed_ms = int((time.perf_counter() - row_t0) * 1000)
                 mark_row_ok(
                     table,
                     row_idx,
                     str(doc_id),
                     iduser,
+                    elapsed_ms=elapsed_ms,
                 )
                 log_kv(
                     logger,
@@ -408,35 +491,32 @@ def _process_row(
                     tipo=tipo_txt,
                     doc=doc_id,
                 )
-
-            dados_doc = None
-            if str(doc_id).startswith("SEM_DOC_"):
-                dados_doc = None
-            else:
-                try:
-                    dados_doc = entradas_saidas.fetch_dados_doc(str(doc_id))
-                except Exception:
-                    dados_doc = None
-
-                try:
-                    go_back = getattr(entradas_saidas, "go_back_to_list", None)
-                    if callable(go_back):
-                        go_back(row_model)
-                except Exception:
-                    logger.exception("Falha ao tentar voltar para a lista após capturar o DOC.")
-
-            elapsed_ms = int((time.perf_counter() - row_t0) * 1000)
-            mark_row_ok(
-                table,
-                row_idx,
-                str(doc_id),
-                iduser,
-                dados_doc=dados_doc,
-                elapsed_ms=elapsed_ms,
+                sync_t0 = time.perf_counter()
+                _sync_post_create_doc_data(
+                    entradas_saidas=entradas_saidas,
+                    table=table,
+                    row_idx=row_idx,
+                    row_model=row_model,
+                    doc_id=str(doc_id),
+                )
+                _log_row_step_timing(
+                    run_id=run_id,
+                    row_idx=row_idx,
+                    tipo_txt=tipo_txt,
+                    stage="post_create_sync",
+                    elapsed_ms=int((time.perf_counter() - sync_t0) * 1000),
+                )
+            total_elapsed_ms = int((time.perf_counter() - row_t0) * 1000)
+            _log_row_step_timing(
+                run_id=run_id,
+                row_idx=row_idx,
+                tipo_txt=tipo_txt,
+                stage="row_total",
+                elapsed_ms=total_elapsed_ms,
             )
             return RowOutcome(
                 ok=True,
-                elapsed_ms=elapsed_ms,
+                elapsed_ms=total_elapsed_ms,
                 created=True,
                 recovered=False,
             )
