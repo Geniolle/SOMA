@@ -240,7 +240,24 @@ def test_process_row_marks_duplicate_without_creating_doc():
     assert len(entradas_saidas.create_calls) == 0
 
     written = _written(fake, 2)
-    assert written[table.col_idx("DOC. SOMA")] == "DUPLICADO"
+    assert written[table.col_idx("DOC. SOMA")] == "123456"
+    assert written[table.col_idx("STATUS")] == "DUPLICADO"
+
+
+def test_process_row_marks_duplicate_marker_without_overwriting_doc():
+    table, fake = _build_table()
+    entradas_saidas = FakeEntradasSaidas(duplicate_doc="DUPLICADO")
+    raw_row = {"row": 2, "TIPO": "Entrada", "DOC. SOMA": "", "STATUS": ""}
+
+    outcome = _call(table, raw_row, entradas_saidas=entradas_saidas, transferencias=FakeTransferencias())
+
+    assert outcome.ok is True
+    assert outcome.duplicated is True
+    assert outcome.created is False
+    assert outcome.recovered is False
+
+    written = _written(fake, 2)
+    assert written[table.col_idx("DOC. SOMA")] == ""
     assert written[table.col_idx("STATUS")] == "DUPLICADO"
 
 

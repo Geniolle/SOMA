@@ -55,13 +55,17 @@ def mark_row_duplicate(
     row_idx: int,
     iduser: str,
     *,
+    duplicate_doc: str | None = None,
     elapsed_ms: int | None = None,
 ) -> None:
     updates = [
-        (row_idx, DOC_COL_DEFAULT, "DUPLICADO"),
         (row_idx, "IDUSER", iduser),
         (row_idx, "TIMESTAMP", _now_pt()),
     ]
+    if duplicate_doc is not None:
+        updates.insert(0, (row_idx, DOC_COL_DEFAULT, duplicate_doc))
+    else:
+        updates.insert(0, (row_idx, DOC_COL_DEFAULT, ""))
     if t.has_col(STATUS_COL_DEFAULT):
         updates.append((row_idx, STATUS_COL_DEFAULT, "DUPLICADO"))
     if elapsed_ms is not None:

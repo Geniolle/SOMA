@@ -198,6 +198,13 @@ def _log_row_step_timing(*, run_id: str, row_idx: int, tipo_txt: str, stage: str
     )
 
 
+def _normalize_duplicate_doc_for_sheet(duplicate_doc: Any) -> str:
+    doc = str(duplicate_doc or "").strip()
+    if re.fullmatch(r"\d{3,}", doc):
+        return doc
+    return ""
+
+
 def _bootstrap_api_session(
     api_client: SomaApiClient,
     *,
@@ -446,7 +453,25 @@ def _process_row(
             )
             if duplicate_doc:
                 elapsed_ms = int((time.perf_counter() - row_t0) * 1000)
-                mark_row_duplicate(table, row_idx, iduser, elapsed_ms=elapsed_ms)
+                duplicate_doc_for_sheet = _normalize_duplicate_doc_for_sheet(duplicate_doc)
+                if not duplicate_doc_for_sheet:
+                    log_kv(
+                        logger,
+                        "Precheck de duplicado devolveu um marcador não numérico; a coluna DOC. SOMA ficará em branco.",
+                        level=logging.WARNING,
+                        row=row_idx,
+                        tipo=tipo_txt,
+                        doc=duplicate_doc,
+                    )
+                mark_row_duplicate(
+                    table,
+                    row_idx,
+                    iduser,
+                    duplicate_doc=duplicate_doc_for_sheet,
+                    elapsed_ms=elapsed_ms,
+                )
+                # Preserva o DOC encontrado na pesquisa para não sobrescrever um
+                # número já conhecido com o texto "DUPLICADO".
                 log_kv(
                     logger,
                     "Documento já existente. Lançamento será pulado.",

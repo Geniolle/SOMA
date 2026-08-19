@@ -115,10 +115,10 @@ def test_mark_row_duplicate_sets_duplicate_doc_and_status():
         [{"TIPO": "Entrada", "DOC. SOMA": "", "STATUS": "", "IDUSER": "", "TIMESTAMP": ""}],
     )
 
-    mark_row_duplicate(table, 2, "USERJOB")
+    mark_row_duplicate(table, 2, "USERJOB", duplicate_doc="123456")
 
     written = _written(fake, 2)
-    assert written[table.col_idx("DOC. SOMA")] == "DUPLICADO"
+    assert written[table.col_idx("DOC. SOMA")] == "123456"
     assert written[table.col_idx("STATUS")] == "DUPLICADO"
     assert written[table.col_idx("IDUSER")] == "USERJOB"
     assert table.col_idx("TIMESTAMP") in written
@@ -155,7 +155,15 @@ def test_batch_update_cells_prefers_direct_range_updates_without_reloading_heade
     table.batch_update_cells([(2, "DOC. SOMA", "DOC-9"), (2, "STATUS", "VALIDADO")])
 
     assert fake.header_reads == 0
-    assert fake.batch_updates == []
+    assert fake.batch_updates == [
+        (
+            "CONTAORDEM",
+            [
+                ("CONTAORDEM!B2", [["DOC-9"]]),
+                ("CONTAORDEM!C2", [["VALIDADO"]]),
+            ],
+        )
+    ]
     assert fake.updated_cells == [
         ("CONTAORDEM", 2, table.col_idx("DOC. SOMA"), "DOC-9"),
         ("CONTAORDEM", 2, table.col_idx("STATUS"), "VALIDADO"),

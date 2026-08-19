@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
@@ -92,19 +92,7 @@ class SheetsTable:
         if not updates:
             return
 
-        # tenta update_cell (singular)
-        fn = getattr(self.sheets, "update_cell", None)
-        if callable(fn):
-            for row_idx, col_name, value in updates:
-                col_idx = self.col_idx(col_name)
-                if not col_idx:
-                    raise RuntimeError(f"Coluna não encontrada no header: {col_name}")
-                try:
-                    fn(ws=self.ws, row=row_idx, col=col_idx, value=value)
-                except TypeError:
-                    fn(self.ws, row_idx, col_idx, value)
-            return
-
+        # Prioriza batch_update para reduzir requests no Google Sheets.
         fn = getattr(self.sheets, "batch_update", None)
         if callable(fn):
             ranges_payload = []
@@ -129,6 +117,19 @@ class SheetsTable:
             except Exception:
                 # Se o batch update falhar por quota/API, deixamos cair no erro abaixo.
                 pass
+
+        # Fallback singular apenas quando o cliente realmente não suportar batch_update.
+        fn = getattr(self.sheets, "update_cell", None)
+        if callable(fn):
+            for row_idx, col_name, value in updates:
+                col_idx = self.col_idx(col_name)
+                if not col_idx:
+                    raise RuntimeError(f"Coluna não encontrada no header: {col_name}")
+                try:
+                    fn(ws=self.ws, row=row_idx, col=col_idx, value=value)
+                except TypeError:
+                    fn(self.ws, row_idx, col_idx, value)
+            return
 
         raise RuntimeError(
             "SheetsClient: não encontrei método suportado para update (batch_update/update_cell/update_rows). "
@@ -340,3 +341,4 @@ def preprocess_contaordem(
         newly_locked=newly_locked,
         invalid=invalid,
     )
+
