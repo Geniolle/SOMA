@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+import unicodedata
 from typing import Any, List, Tuple
 
 from selenium.webdriver.common.by import By
@@ -21,20 +22,16 @@ Locator = Tuple[str, str]
 
 class TransferenciasPage:
     """
-    Fluxo de Transferência conforme SOMA.py (fonte):
+    Fluxo de Transferência conforme SOMA.py:
       - Caixas/Bancos
       - Nova Transferência
       - Caixa Saída, Valor, Caixa Entrada, Data, Descrição
       - Salvar, OK, Voltar
     """
 
-    # Menu Caixas/Bancos (do SOMA.py)
     MENU_CAIXAS_BANCOS_CANDIDATES: List[Locator] = []
-
-    # Botão Nova Transferência (do SOMA.py)
     BTN_NOVA_TRANSFERENCIA_CANDIDATES: List[Locator] = []
 
-    # Campos Transferência (do SOMA.py)
     CAIXA_SAIDA = (By.XPATH, "")
     VALOR = (By.XPATH, "")
     CAIXA_ENTRADA = (By.XPATH, "")
@@ -76,7 +73,6 @@ class TransferenciasPage:
         return loc
 
     def _goto_home(self) -> None:
-        # ajuda a evitar ficar em tela errada do SOMA
         try:
             self.a.driver.get(self.home_url)
             self.a.wait_dom_ready(15)
@@ -84,70 +80,207 @@ class TransferenciasPage:
         except Exception:
             pass
 
+    @staticmethod
+    def _norm_text(value: str) -> str:
+        txt = unicodedata.normalize("NFKD", value or "")
+        txt = "".join(ch for ch in txt if not unicodedata.combining(ch))
+        return " ".join(txt.lower().split())
+
+    @staticmethod
+    def _strip_accents(value: str) -> str:
+        return "".join(ch for ch in unicodedata.normalize("NFKD", value or "") if not unicodedata.combining(ch))
+
+    def _read_select2_selected_text(self, opener: Locator) -> str:
+        try:
+            host = self.a.driver.find_element(*opener)
+        except Exception:
+            return ""
+
+        selectors = [
+            "span.select2-selection__rendered",
+            "span.select2-selection__choice",
+            "span.select2-selection",
+        ]
+
+        for css in selectors:
+            try:
+                nodes = host.find_elements(By.CSS_SELECTOR, css)
+            except Exception:
+                nodes = []
+
+            texts: List[str] = []
+            for node in nodes:
+                txt = (node.text or "").strip()
+                if txt:
+                    texts.append(txt)
+
+            joined = " ".join(texts).strip()
+            if joined:
+                return joined
+
+        try:
+            return (host.get_attribute("textContent") or "").strip()
+        except Exception:
+            return ""
+
+    def _collect_select2_options(self, value: str) -> List[str]:
+        css_options = (By.CSS_SELECTOR, "span.select2-container--open li.select2-results__option")
+        inp = self.a.wait_visible(self.SELECT2_SEARCH, timeout_seconds=30)
+
+        queries: List[str] = []
+        full = (value or "").strip()
+        if full:
+            queries.append(full)
+            ascii_full = self._strip_accents(full).strip()
+            if ascii_full and ascii_full not in queries:
+                queries.append(ascii_full)
+            first_token = full.split()[0].strip()
+            if first_token and first_token not in queries:
+                queries.append(first_token)
+
+        last_sample: List[str] = []
+
+        for query in queries:
+            try:
+                inp.clear()
+            except Exception:
+                pass
+            inp.send_keys(query)
+            time.sleep(0.8)
+
+            try:
+                self.a.driver.execute_script(
+                    "arguments[0].dispatchEvent(new Event('input', { bubbles: true }));",
+                    inp,
+                )
+            except Exception:
+                pass
+
+            try:
+                WebDriverWait(self.a.driver, 4).until(lambda d: len(d.find_elements(*css_options)) > 0)
+            except Exception:
+                continue
+
+            options: List[str] = []
+            for opt in self.a.driver.find_elements(*css_options):
+                txt = (opt.text or "").strip()
+                if not txt:
+                    continue
+                norm = self._norm_text(txt)
+                if norm in {"no results found", "nenhum resultado encontrado", "sem resultados"}:
+                    continue
+                options.append(txt)
+
+            last_sample = options
+            if options:
+                return options
+
+        return last_sample
+
     def _select2_choose_verified(self, opener: Locator, value: str, *, row: ContaOrdemRow, field: str) -> None:
         v = (value or "").strip()
         if not v:
-            raise ValueError(f"{field} vazio na sheet (linha {row.row_number}). Preenche a coluna correta (ex.: CAIXA SAIDA).")
+            raise ValueError(f"{field} vazio na sheet (linha {row.row_number}). Preenche a coluna correta.")
 
         self._dismiss_alerts()
 
-        # abre o select2
         try:
             self.a.click(opener)
         except Exception:
             self.a.click_js(opener)
 
-        # espera o input do select2
         inp = self.a.wait_visible(self.SELECT2_SEARCH, timeout_seconds=30)
-        inp.clear()
+        try:
+            inp.clear()
+        except Exception:
+            pass
         inp.send_keys(v)
 
-        # igual ao SOMA.py: espera o valor aparecer no input antes do ENTER
         WebDriverWait(self.a.driver, 5).until(
             EC.text_to_be_present_in_element_value(self.SELECT2_SEARCH, v)
         )
-        inp.send_keys(Keys.ENTER)
+
+        options = self._collect_select2_options(v)
+        if not options:
+            raise RuntimeError(
+                f"{field} não encontrou opção compatível com '{v}' (linha {row.row_number}). "
+                "A lista retornou vazia."
+            )
+
+        want = self._norm_text(v)
+        best_text = None
+        for txt in options:
+            norm = self._norm_text(txt)
+            if norm == want or (want and want in norm) or (norm in want):
+                best_text = txt
+                break
+
+        if best_text is None:
+            best_text = options[0]
+
+        css_options = (By.CSS_SELECTOR, "span.select2-container--open li.select2-results__option")
+        best = None
+        for opt in self.a.driver.find_elements(*css_options):
+            if (opt.text or "").strip() == best_text:
+                best = opt
+                break
+
+        if best is None:
+            raise RuntimeError(
+                f"{field} não encontrou opção compatível com '{v}' (linha {row.row_number}). "
+                f"Amostra={options[:10]}"
+            )
+
+        try:
+            self.a.driver.execute_script("arguments[0].click();", best)
+        except Exception:
+            best.click()
+
         time.sleep(0.8)
 
-        # verificação “best effort”: o texto do opener deve conter o valor selecionado
         try:
-            el = self.a.driver.find_element(*opener)
-            txt = (el.text or "").strip()
+            txt = self._read_select2_selected_text(opener)
             if v.lower() not in txt.lower():
-                # às vezes demora renderizar, tenta mais um pouco
                 time.sleep(1.2)
-                el = self.a.driver.find_element(*opener)
-                txt = (el.text or "").strip()
+                txt = self._read_select2_selected_text(opener)
             if v.lower() not in txt.lower():
-                raise RuntimeError(f"{field} não foi selecionado (linha {row.row_number}). Esperado conter '{v}', mas ficou '{txt}'.")
+                raise RuntimeError(
+                    f"{field} não foi selecionado (linha {row.row_number}). "
+                    f"Esperado conter '{v}', mas ficou '{txt}'."
+                )
         except Exception:
-            p = self.a.screenshot(f"transfer_select2_fail_{field.lower().replace(' ','_')}_row_{row.row_number}")
-            log_kv(log, "Select2 não confirmou seleção.", level=logging.ERROR, field=field, row=row.row_number, value=v, url=self.a.driver.current_url, screenshot=p)
+            p = self.a.screenshot(f"transfer_select2_fail_{field.lower().replace(' ', '_')}_row_{row.row_number}")
+            log_kv(
+                log,
+                "Select2 não confirmou seleção.",
+                level=logging.ERROR,
+                field=field,
+                row=row.row_number,
+                value=v,
+                url=self.a.driver.current_url,
+                screenshot=p,
+            )
             raise
 
     def open_new(self, row: ContaOrdemRow) -> None:
-        # console (para aparecer sempre)
         print(f"\n[TRANSFERÊNCIA] Abrindo formulário | linha={row.row_number}")
 
         self._goto_home()
 
         with step(log, "transfer.open_menu", row=row.row_number):
             self._click_any(self.MENU_CAIXAS_BANCOS_CANDIDATES, timeout_seconds=max(60, self.timeout))
-            time.sleep(5)  # igual ao SOMA.py
+            time.sleep(5)
 
         with step(log, "transfer.open_new", row=row.row_number):
-            # tenta abrir “Nova Transferência”
             self._click_any(self.BTN_NOVA_TRANSFERENCIA_CANDIDATES, timeout_seconds=max(60, self.timeout))
             time.sleep(2)
-
-            # espera aparecer o primeiro campo do form
             self.a.wait_present(self.CAIXA_SAIDA, timeout_seconds=max(60, self.timeout))
 
     def fill_and_save(self, row: ContaOrdemRow) -> None:
-        # console (para aparecer sempre)
         print(
             f"[TRANSFERÊNCIA] Preenchendo | linha={row.row_number} | "
-            f"caixa_saida='{row.caixa_saida}' | caixa_entrada='{row.caixa}' | valor='{row.importancia}' | data='{row.data_mov}'"
+            f"caixa_saida='{row.caixa_saida}' | caixa_entrada='{row.caixa}' | "
+            f"valor='{row.importancia}' | data='{row.data_mov}'"
         )
 
         with step(log, "transfer.fill", row=row.row_number):
