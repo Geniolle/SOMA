@@ -5,6 +5,7 @@ import os
 import re
 import time
 import traceback
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -13,8 +14,8 @@ from soma_app.automation.adapters import EntradasSaidasAdapter, TransferenciasAd
 from soma_app.automation.api.iv_api import EntradasSaidasApi, TransferenciasApi
 from soma_app.automation.pages.entradas_saidas_page import EntradasSaidasPage
 from soma_app.automation.pages.login_page import LoginPage
-from soma_app.automation.pages.transferencias_page import TransferenciasPage
-from soma_app.domain.models import ContaOrdemRow, TipoMovimento
+from soma_app.automation.pages.transferencias_page import TransferenciasPage, TransferenciaDuplicadaError
+from soma_app.domain.models import ContaOrdemRow, LinhaStatus, TipoMovimento, format_amount_for_input
 from soma_app.infra import report as legacy_report
 from soma_app.infra.env import env_bool, env_str
 from soma_app.infra.log_config import configure_logging, ensure_artifacts_dirs
@@ -202,7 +203,77 @@ def _normalize_duplicate_doc_for_sheet(duplicate_doc: Any) -> str:
     doc = str(duplicate_doc or "").strip()
     if re.fullmatch(r"\d{3,}", doc):
         return doc
+    if doc:
+        return "DUPLICADO"
     return ""
+
+
+# ###################################################################################
+# (3) AUDITORIA DE DUPLICIDADE DE TRANSFERENCIA ANTES DO FORMULARIO
+# ###################################################################################
+def _normalize_transfer_signature_text_v1(value: Any) -> str:
+    text = "" if value is None else str(value).strip()
+    if not text:
+        return ""
+
+    normalized = unicodedata.normalize("NFKD", text)
+    normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    return " ".join(normalized.lower().split())
+
+
+def _normalize_transfer_signature_amount_v1(value: Any) -> str:
+    return _normalize_transfer_signature_text_v1(format_amount_for_input(value))
+
+
+def _build_transfer_signature_v1(row: ContaOrdemRow) -> tuple[str, str, str, str]:
+    return (
+        _normalize_transfer_signature_text_v1(row.caixa_saida),
+        _normalize_transfer_signature_text_v1(row.caixa),
+        _normalize_transfer_signature_text_v1(row.data_mov),
+        _normalize_transfer_signature_amount_v1(row.importancia),
+    )
+
+
+def _find_transfer_duplicate_doc_v1(table: SheetsTable, row: ContaOrdemRow) -> str | None:
+    current_signature = _build_transfer_signature_v1(row)
+
+    for raw_row in table.get_records_with_row():
+        row_idx = int(raw_row.get("row", 0) or 0)
+        if row_idx >= row.row_number:
+            continue
+
+        try:
+            candidate = ContaOrdemRow.from_table_row(row_number=row_idx, raw=raw_row)
+        except Exception:
+            continue
+
+        if candidate.tipo != TipoMovimento.TRANSFERENCIA:
+            continue
+        if candidate.status != LinhaStatus.CONCLUIDA:
+            continue
+
+        if _build_transfer_signature_v1(candidate) == current_signature:
+            doc = str(candidate.doc_soma or "").strip()
+            if doc:
+                return doc
+
+    return None
+
+
+def _is_transfer_duplicate_exception_v1(exc: Exception) -> bool:
+    seen: set[int] = set()
+    current: Exception | None = exc
+
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        text = f"{type(current).__name__} {current}".lower()
+        if "transferenciaduplicadaerror" in text:
+            return True
+        if "transferencia duplicada" in text or "transferência duplicada" in text:
+            return True
+        current = getattr(current, "__cause__", None) or getattr(current, "__context__", None)
+
+    return False
 
 
 def _bootstrap_api_session(
@@ -430,7 +501,62 @@ def _process_row(
             row_model = ContaOrdemRow.from_table_row(row_number=row_idx, raw=raw_row)
 
             if row_model.tipo == TipoMovimento.TRANSFERENCIA:
-                doc_id = transferencias.run(row_model)
+                transfer_duplicate_doc = _find_transfer_duplicate_doc_v1(table, row_model)
+                if transfer_duplicate_doc:
+                    elapsed_ms = int((time.perf_counter() - row_t0) * 1000)
+                    mark_row_duplicate(
+                        table,
+                        row_idx,
+                        iduser,
+                        duplicate_doc=transfer_duplicate_doc,
+                        elapsed_ms=elapsed_ms,
+                    )
+                    log_kv(
+                        logger,
+                        "Transferencia ja existente. Fluxo encerrado antes do formulario.",
+                        level=logging.INFO,
+                        row=row_idx,
+                        tipo=tipo_txt,
+                        doc=transfer_duplicate_doc,
+                    )
+                    _log_row_step_timing(
+                        run_id=run_id,
+                        row_idx=row_idx,
+                        tipo_txt=tipo_txt,
+                        stage="precheck_transfer_duplicate",
+                        elapsed_ms=elapsed_ms,
+                    )
+                    return RowOutcome(ok=True, elapsed_ms=elapsed_ms, duplicated=True, transfer=True)
+
+                try:
+                    doc_id = transferencias.run(row_model)
+                except TransferenciaDuplicadaError as exc:
+                    elapsed_ms = int((time.perf_counter() - row_t0) * 1000)
+                    duplicate_doc = _normalize_duplicate_doc_for_sheet(getattr(exc, "matching_row", ""))
+                    mark_row_duplicate(
+                        table,
+                        row_idx,
+                        iduser,
+                        duplicate_doc=duplicate_doc or None,
+                        elapsed_ms=elapsed_ms,
+                    )
+                    log_kv(
+                        logger,
+                        "Transferencia duplicada identificada na listagem do site.",
+                        level=logging.INFO,
+                        row=row_idx,
+                        tipo=tipo_txt,
+                        duplicate_doc=duplicate_doc or "-",
+                    )
+                    _log_row_step_timing(
+                        run_id=run_id,
+                        row_idx=row_idx,
+                        tipo_txt=tipo_txt,
+                        stage="transferencia.duplicada.listagem",
+                        elapsed_ms=elapsed_ms,
+                    )
+                    return RowOutcome(ok=True, elapsed_ms=elapsed_ms, duplicated=True, transfer=True)
+
                 elapsed_ms = int((time.perf_counter() - row_t0) * 1000)
                 mark_row_ok(table, row_idx, str(doc_id), iduser, elapsed_ms=elapsed_ms)
                 _log_row_step_timing(
@@ -552,6 +678,26 @@ def _process_row(
         elapsed_ms = int((time.perf_counter() - row_t0) * 1000)
         err_msg = _safe_err(e)
 
+        if "row_model" in locals() and getattr(row_model, "tipo", None) == TipoMovimento.TRANSFERENCIA and _is_transfer_duplicate_exception_v1(e):
+            duplicate_doc = _normalize_duplicate_doc_for_sheet(getattr(e, "matching_row", ""))
+            mark_row_duplicate(
+                table,
+                row_idx,
+                iduser,
+                duplicate_doc=duplicate_doc or None,
+                elapsed_ms=elapsed_ms,
+            )
+            log_kv(
+                logger,
+                "Transferencia duplicada identificada pelo wrapper de excecao.",
+                level=logging.INFO,
+                row=row_idx,
+                tipo=tipo_txt,
+                duplicate_doc=duplicate_doc or "-",
+                error=err_msg,
+            )
+            return RowOutcome(ok=True, elapsed_ms=elapsed_ms, duplicated=True, transfer=True)
+
         if _is_pending_doc_exception(e):
             mark_row_error(
                 table,
@@ -635,10 +781,10 @@ def _run_batches(
                 totals.processed += 1
                 if outcome.ok:
                     totals.ok += 1
-                    if outcome.transfer:
-                        totals.transfer += 1
-                    elif outcome.duplicated:
+                    if outcome.duplicated:
                         totals.duplicated += 1
+                    elif outcome.transfer:
+                        totals.transfer += 1
                     elif outcome.recovered:
                         totals.recovered += 1
                     else:

@@ -10,7 +10,7 @@
     "SOMA_READY_CANDIDATES": [
       "//a[contains(@href,'exec=entradas_saidas') and contains(@class,'atalho-card')]",
       "//a[contains(@href,'exec=entradas_saidas') and .//span[contains(@class,'site-menu-title')]]",
-      "//a[contains(@href,'exec=entradas_saidas') and (contains(.,'Entradas/sa') or contains(.,'Entradas/Sa'))]"
+      "//a[contains(@href,'exec=entradas_saidas') and (contains(.,'Entradas/Saídas') or contains(.,'Entradas/Saidas'))]"
     ],
     "SOMA_BUTTON_CANDIDATES": [
       { "by": "id", "value": "285" },
@@ -20,8 +20,8 @@
   },
   "entradas_saidas": {
     "MENU_ENTRADAS_SAIDAS_CANDIDATES": [
-      "//*[self::a or self::button or self::span][contains(.,'Entradas') and (contains(.,'Saídas') or contains(.,'Saidas') or contains(.,'SaÃdas') or contains(.,'saÃdas') or contains(.,'SaÃdas'))]",
-      "//*[contains(.,'Entradas') and (contains(.,'Saídas') or contains(.,'Saidas') or contains(.,'SaÃdas') or contains(.,'saÃdas'))]"
+      "//*[self::a or self::button or self::span][contains(.,'Entradas') and (contains(.,'Saídas') or contains(.,'Saidas'))]",
+      "//*[contains(.,'Entradas') and (contains(.,'Saídas') or contains(.,'Saidas'))]"
     ],
     "BTN_NOVA_CANDIDATES": [
       "//a[contains(@class,'btn') and contains(.,'Nova') and contains(.,'Entrada')]",
@@ -47,7 +47,7 @@
       "//input[@type='radio' and (contains(@id,'saída') or contains(@id,'saida') or contains(@name,'saída') or contains(@name,'saida'))]"
     ],
     "PLANO_CONTA": "/html/body/div[2]/div/div[3]/div/div/form/div[7]/div/span/span[1]/span/span[1]",
-    "CENTRO_CUSTO": "/html/body/div[2]/div/div[3]/div/div/form/div[7]/div/span/span[1]/span",
+    "CENTRO_CUSTO": "//*[@id='departamento' or @name='id_centro_custo']",
     "DESCRICAO": "//input[@id='descricao_input']",
     "VALOR": "/html/body/div[2]/div/div[3]/div/div/form/div[12]/div/input",
     "OBS": "/html/body/div[2]/div/div[3]/div/div/form/div[21]/div/textarea",
@@ -60,10 +60,11 @@
       "(//form//span[contains(@class,'select2-selection')])[1]"
     ],
     "CENTRO_CUSTO_CANDIDATES": [
-      "/html/body/div[2]/div/div[3]/div/div/form/div[7]/div/span/span[1]/span",
+      "//*[@id='departamento' or @name='id_centro_custo']",
+      "//select[@name='id_centro_custo']",
+      "//select[@name='id_centro_custo']/following-sibling::span//span[contains(@class,'select2-selection')]",
       "//form//label[contains(normalize-space(.), 'Centro de Custo')]/following::span[contains(@class,'select2-selection')][1]",
-      "//form//*[contains(normalize-space(.), 'Centro de Custo')]/following::span[contains(@class,'select2-selection')][1]",
-      "(//form//span[contains(@class,'select2-selection')])[2]"
+      "//form//*[contains(normalize-space(.), 'Centro de Custo')]/following::span[contains(@class,'select2-selection')][1]"
     ],
     "DESCRICAO_CANDIDATES": [
       "//input[@id='descricao_input']",
@@ -89,7 +90,7 @@
       "(//form//span[contains(@class,'select2-selection')])[3]"
     ],
     "DATA_VENCIMENTO_SAIDA": "/html/body/div[2]/div/div[3]/div/div/form/div[10]/div/div/input",
-    "BTN_SALVAR_FORM": "/html/body/div[2]/div/div[3]/div/div/form/div[30]/div/button[1]",
+    "BTN_SALVAR_FORM": "//*[@id='salvar' or @name='Salvar' or contains(normalize-space(.), 'Salvar')]",
     "BTN_VOLTAR": "/html/body/div[2]/div/div[2]/div/div/form/div[30]/div/button[2]",
     "FORM_READY_SELECT2": "(//form//span[contains(@class,'select2-selection')])[1]",
     "OK_ALERT": { "by": "css selector", "value": ".swal2-confirm" },
@@ -154,13 +155,66 @@
       "/html/body/div[2]/div/div[2]/a",
       "//*[self::a or self::button][contains(.,'Nova') and (contains(.,'Transfer') or contains(.,'transfer'))]"
     ],
-    "CAIXA_SAIDA": "/html/body/div[2]/div/div[2]/div/div/form/div[2]/div",
-    "VALOR": "/html/body/div[2]/div/div[2]/div/div/form/div[4]/div/input",
+    "CAIXA_SAIDA": "/html/body/div[2]/div/div[2]/div/div/form/div[1]/div/span/span[1]/span/span[1]",
+    "CAIXA_SAIDA_CANDIDATES": [
+      "//select[@name='id_caixa_origem']/following-sibling::span//span[contains(@class,'select2-selection')]",
+      "//select[@name='id_caixa_origem']",
+      "/html/body/div[2]/div/div[2]/div/div/form/div[1]/div/span/span[1]/span/span[1]",
+      "//form//label[contains(normalize-space(.), 'Caixa Saída')]/following::span[contains(@class,'select2-selection')][1]",
+      "//form//label[contains(normalize-space(.), 'Caixa Saida')]/following::span[contains(@class,'select2-selection')][1]",
+      "//form//label[contains(normalize-space(.), 'Caixa de Saída')]/following::span[contains(@class,'select2-selection')][1]",
+      "//form//label[contains(normalize-space(.), 'Caixa de Saida')]/following::span[contains(@class,'select2-selection')][1]",
+      "//form//label[contains(normalize-space(.), 'Conta Saída')]/following::span[contains(@class,'select2-selection')][1]",
+      "//form//label[contains(normalize-space(.), 'Conta Saida')]/following::span[contains(@class,'select2-selection')][1]"
+    ],
+    "DATA_INICIO": "/html/body/div[2]/div/div[3]/div/div/form/div[2]/div/div[1]/div/input",
+    "DATA_FIM": "/html/body/div[2]/div/div[3]/div/div/form/div[2]/div/div[3]/div/input",
+    "BTN_PESQUISAR": "/html/body/div[2]/div/div[3]/div/div/form/div[3]/div/button",
+    "CENTRO_CUSTO_SAIDA": "//*[@id='departamento' or @name='id_cc_saida']",
+    "CENTRO_CUSTO_SAIDA_CANDIDATES": [
+      "//select[@name='id_cc_saida']/following-sibling::span//span[contains(@class,'select2-selection')]",
+      "//select[@name='id_cc_saida']",
+      "//*[@id='departamento' or @name='id_cc_saida']",
+      "//form//label[contains(normalize-space(.), 'Centro de Custo')]/following::span[contains(@class,'select2-selection')][1]",
+      "//form//*[contains(normalize-space(.), 'Centro de Custo')]/following::span[contains(@class,'select2-selection')][1]"
+    ],
+    "VALOR": "//input[@name='valor_transferencia']",
     "CAIXA_ENTRADA": "/html/body/div[2]/div/div[2]/div/div/form/div[5]/div",
-    "DATA": "/html/body/div[2]/div/div[2]/div/div/form/div[8]/div/div/input",
-    "DESCRICAO": "/html/body/div[2]/div/div[2]/div/div/form/div[9]/div/textarea",
-    "BTN_SALVAR": "/html/body/div[2]/div/div[2]/div/div/form/div[10]/div/button[1]",
-    "BTN_VOLTAR": "/html/body/div[2]/div/div[2]/div/div/form/div[10]/div/button[2]",
+    "CAIXA_ENTRADA_CANDIDATES": [
+      "//select[@name='id_caixa_destino']/following-sibling::span//span[contains(@class,'select2-selection')]",
+      "//select[@name='id_caixa_destino']",
+      "/html/body/div[2]/div/div[2]/div/div/form/div[5]/div",
+      "//form//label[contains(normalize-space(.), 'CAIXA DE ENTRADA')]/following::span[contains(@class,'select2-selection')][1]",
+      "//form//label[contains(normalize-space(.), 'Caixa Entrada')]/following::span[contains(@class,'select2-selection')][1]",
+      "//form//label[contains(normalize-space(.), 'Caixa Entrada')]/following::span[contains(@class,'select2-selection')][1]",
+      "//form//label[contains(normalize-space(.), 'Caixa de Entrada')]/following::span[contains(@class,'select2-selection')][1]",
+      "//form//label[contains(normalize-space(.), 'Conta Entrada')]/following::span[contains(@class,'select2-selection')][1]",
+      "//form//label[contains(normalize-space(.), 'Conta de Entrada')]/following::span[contains(@class,'select2-selection')][1]"
+    ],
+    "CENTRO_CUSTO_ENTRADA": "//*[@id='departamento' or @name='id_cc_entrada']",
+    "CENTRO_CUSTO_ENTRADA_CANDIDATES": [
+      "//select[@name='id_cc_entrada']/following-sibling::span//span[contains(@class,'select2-selection')]",
+      "//select[@name='id_cc_entrada']",
+      "//*[@id='departamento' or @name='id_cc_entrada']",
+      "//form//label[contains(normalize-space(.), 'Centro de Custo')]/following::span[contains(@class,'select2-selection')][1]",
+      "//form//*[contains(normalize-space(.), 'Centro de Custo')]/following::span[contains(@class,'select2-selection')][1]"
+    ],
+    "VALOR_ENTRADA": "//input[@name='valor_transferencia_entrada']",
+    "VALOR_ENTRADA_CANDIDATES": [
+      "//input[@name='valor_transferencia_entrada']",
+      "//input[@data-fv-field='valor_transferencia_entrada']",
+      "//form//label[contains(normalize-space(.), 'Valor de Entrada')]/following::input[1]"
+    ],
+    "DATA": "//input[@name='data_transferencia']",
+    "DESCRICAO": "//textarea[@name='obs']",
+    "BTN_SALVAR": "//*[@id='salvar' or @name='Salvar' or contains(normalize-space(.), 'Salvar')]",
+    "BTN_SALVAR_CANDIDATES": [
+      "//*[@id='btn_salvar' or @name='btn_salvar']",
+      "//*[@id='salvar' or @name='Salvar']",
+      "//button[contains(normalize-space(.), 'Salvar')]",
+      "//input[@type='submit' and contains(@value, 'Salvar')]"
+    ],
+    "BTN_VOLTAR": "//button[contains(normalize-space(.), 'Voltar') or contains(@onclick, 'transferencias_caixas')]",
     "OK_ALERT": { "by": "css selector", "value": ".swal2-confirm" },
     "SWAL_CONTAINER": { "by": "class_name", "value": "swal2-container" },
     "SELECT2_SEARCH": "/html/body/span/span/span[1]/input"

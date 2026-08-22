@@ -320,6 +320,77 @@ class Actions:
         el.send_keys(text)
         self._selector_debug_pause("type", locator, f"clear={clear} | value_length={len(str(text or ''))}")
 
+    def type_any(self, locators: Iterable[Locator], text: str, clear: bool = True) -> None:
+        locators_list = [loc for loc in locators if isinstance(loc, tuple) and len(loc) == 2]
+        if not locators_list:
+            raise ValueError("A lista de locators para type_any está vazia ou inválida.")
+
+        last_err: Exception | None = None
+        for loc in locators_list:
+            try:
+                el = self.wait_visible(loc, timeout_seconds=3)
+                if clear:
+                    try:
+                        el.clear()
+                    except Exception:
+                        pass
+                el.send_keys(text)
+                self._selector_debug_pause("type_any", loc, f"clear={clear} | value_length={len(str(text or ''))}")
+                return
+            except Exception as exc:
+                last_err = exc
+
+        for loc in locators_list:
+            try:
+                el = self.wait_present(loc, timeout_seconds=3)
+                if clear:
+                    self.driver.execute_script(
+                        "arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input', { bubbles: true })); arguments[0].dispatchEvent(new Event('change', { bubbles: true }));",
+                        el,
+                    )
+                self.driver.execute_script(
+                    "arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input', { bubbles: true })); arguments[0].dispatchEvent(new Event('change', { bubbles: true }));",
+                    el,
+                    text,
+                )
+                self._selector_debug_pause("type_any_js", loc, f"clear={clear} | value_length={len(str(text or ''))}")
+                return
+            except Exception as exc:
+                last_err = exc
+
+        raise TimeoutException(f"Falha ao preencher campo com type_any | last_err={last_err}")
+
+    def type_any_dom(self, locators: Iterable[Locator], text: str, clear: bool = True) -> None:
+        locators_list = [loc for loc in locators if isinstance(loc, tuple) and len(loc) == 2]
+        if not locators_list:
+            raise ValueError("A lista de locators para type_any_dom está vazia ou inválida.")
+
+        last_err: Exception | None = None
+        for loc in locators_list:
+            try:
+                elements = self.driver.find_elements(*loc)
+                if not elements:
+                    continue
+
+                el = elements[0]
+                if clear:
+                    try:
+                        el.clear()
+                    except Exception:
+                        self.driver.execute_script("arguments[0].value = '';", el)
+
+                self.driver.execute_script(
+                    "arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input', { bubbles: true })); arguments[0].dispatchEvent(new Event('change', { bubbles: true }));",
+                    el,
+                    text,
+                )
+                self._selector_debug_pause("type_any_dom", loc, f"clear={clear} | value_length={len(str(text or ''))}")
+                return
+            except Exception as exc:
+                last_err = exc
+
+        raise TimeoutException(f"Falha ao preencher campo com type_any_dom | last_err={last_err}")
+
     def press_enter(self, locator: Locator) -> None:
         if log.isEnabledFor(logging.DEBUG):
             log.debug("[ACTION] press_enter | by=%s sel=%s", locator[0], locator[1])
@@ -398,7 +469,7 @@ class Actions:
 
     def select2_choose(
         self,
-        opener: Locator,
+        opener: Locator | Iterable[Locator],
         value: str,
         search_input: Optional[Locator] = None,
     ) -> None:
@@ -419,16 +490,31 @@ class Actions:
         if log.isEnabledFor(logging.DEBUG):
             log.debug("[ACTION] select2_choose | opener=%s | value=%s", opener, str(value)[:60])
 
+        opener_candidates: list[Locator]
+        if isinstance(opener, list):
+            opener_candidates = [loc for loc in opener if isinstance(loc, tuple) and len(loc) == 2]
+            if not opener_candidates:
+                raise ValueError("A lista de locators do Select2 está vazia ou inválida.")
+        else:
+            opener_candidates = [opener]
+
         # abrir dropdown
         try:
-            self.click(opener)
+            if len(opener_candidates) == 1:
+                self.click(opener_candidates[0])
+            else:
+                self.click_any_visible(opener_candidates, timeout_seconds=30)
         except Exception as first_err:
             try:
-                self.click_js(opener)
+                if len(opener_candidates) == 1:
+                    self.click_js(opener_candidates[0])
+                else:
+                    el = self.wait_any_visible_element(opener_candidates, timeout_seconds=30)
+                    self.driver.execute_script("arguments[0].click();", el)
             except Exception as second_err:
                 p = self.screenshot("select2_open_fail")
                 raise TimeoutException(
-                    f"Falha ao abrir Select2 | opener={opener} | value='{value}' | screenshot={p} | "
+                    f"Falha ao abrir Select2 | opener={opener_candidates} | value='{value}' | screenshot={p} | "
                     f"click_err={first_err} | click_js_err={second_err}"
                 ) from second_err
 
@@ -442,7 +528,7 @@ class Actions:
                 inp.clear()
                 inp.send_keys(value)
                 inp.send_keys(Keys.ENTER)
-                self._selector_debug_pause("select2_search", loc, f"opener={opener[0]}:{opener[1]} | value_length={len(str(value or ''))}")
+                self._selector_debug_pause("select2_search", loc, f"opener={opener_candidates[0][0]}:{opener_candidates[0][1]} | value_length={len(str(value or ''))}")
                 return
 
         # sem pesquisa: clicar opção
@@ -450,7 +536,7 @@ class Actions:
             self._wait(10).until(lambda d: len(d.find_elements(*css_options)) > 0)
         except TimeoutException:
             p = self.screenshot("select2_no_options")
-            raise TimeoutException(f"Select2 abriu sem pesquisa e sem opções visíveis | opener={opener} | screenshot={p}")
+            raise TimeoutException(f"Select2 abriu sem pesquisa e sem opções visíveis | opener={opener_candidates} | screenshot={p}")
 
         options = self.driver.find_elements(*css_options)
         want = (value or "").strip().lower()
@@ -476,4 +562,4 @@ class Actions:
             self.driver.execute_script("arguments[0].click();", best)
         except Exception:
             best.click()
-        self._selector_debug_pause("select2_option", css_options, f"opener={opener[0]}:{opener[1]} | value_length={len(str(value or ''))}")
+        self._selector_debug_pause("select2_option", css_options, f"opener={opener_candidates[0][0]}:{opener_candidates[0][1]} | value_length={len(str(value or ''))}")

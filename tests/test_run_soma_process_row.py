@@ -128,6 +128,13 @@ def _build_table():
     return table, fake
 
 
+def _build_table_with_records(header, records):
+    fake = FakeSheetsClient(header, records)
+    table = SheetsTable(fake, "CONTAORDEM")
+    table.load()
+    return table, fake
+
+
 def _written(fake, row):
     return {idx: value for (_ws, r, idx, value) in fake.updated_cells if r == row}
 
@@ -163,6 +170,71 @@ def test_process_row_transferencia_marks_ok():
     written = _written(fake, 2)
     assert written[table.col_idx("DOC. SOMA")] == "DOC-T1"
     assert written[table.col_idx("STATUS")] == "VALIDADO"
+
+
+def test_process_row_transferencia_skips_form_when_same_transfer_already_exists():
+    header = [
+        "TIPO",
+        "CAIXA SAIDA",
+        "CAIXA",
+        "DATA MOV.",
+        "IMPORTANCIA",
+        "DESCRICAO SOMA",
+        "DOC. SOMA",
+        "STATUS",
+        "IDUSER",
+        "TIMESTAMP",
+    ]
+    records = [
+        {
+            "TIPO": "Transferencia",
+            "CAIXA SAIDA": "CAIXA ORIGEM",
+            "CAIXA": "CAIXA DESTINO",
+            "DATA MOV.": "12/08/2026",
+            "IMPORTANCIA": "16,20",
+            "DESCRICAO SOMA": "Transferencia teste",
+            "DOC. SOMA": "DOC-T-OLD",
+            "STATUS": "VALIDADO",
+            "IDUSER": "USERJOB",
+            "TIMESTAMP": "12/08/2026 10:00:00",
+        },
+        {
+            "TIPO": "Transferencia",
+            "CAIXA SAIDA": "CAIXA ORIGEM",
+            "CAIXA": "CAIXA DESTINO",
+            "DATA MOV.": "12/08/2026",
+            "IMPORTANCIA": "16,2",
+            "DESCRICAO SOMA": "Transferencia teste",
+            "DOC. SOMA": "",
+            "STATUS": "",
+            "IDUSER": "",
+            "TIMESTAMP": "",
+        },
+    ]
+    table, fake = _build_table_with_records(header, records)
+    transferencias = FakeTransferencias(doc_id="DOC-T2")
+    raw_row = {
+        "row": 3,
+        "TIPO": "Transferencia",
+        "CAIXA SAIDA": "CAIXA ORIGEM",
+        "CAIXA": "CAIXA DESTINO",
+        "DATA MOV.": "12/08/2026",
+        "IMPORTANCIA": "16,20",
+        "DESCRICAO SOMA": "Transferencia teste",
+        "DOC. SOMA": "",
+        "STATUS": "",
+    }
+
+    outcome = _call(table, raw_row, entradas_saidas=FakeEntradasSaidas(), transferencias=transferencias)
+
+    assert outcome.ok is True
+    assert outcome.transfer is True
+    assert outcome.duplicated is True
+    assert len(transferencias.calls) == 0
+
+    written = _written(fake, 3)
+    assert written[table.col_idx("DOC. SOMA")] == "DOC-T-OLD"
+    assert written[table.col_idx("STATUS")] == "DUPLICADO"
 
 
 def test_process_row_creates_doc_for_new_entrada():
@@ -257,7 +329,7 @@ def test_process_row_marks_duplicate_marker_without_overwriting_doc():
     assert outcome.recovered is False
 
     written = _written(fake, 2)
-    assert written[table.col_idx("DOC. SOMA")] == ""
+    assert written[table.col_idx("DOC. SOMA")] == "DUPLICADO"
     assert written[table.col_idx("STATUS")] == "DUPLICADO"
 
 
